@@ -467,11 +467,25 @@
                 recurrenceEnd: r.recurrenceEnd ? new Date(r.recurrenceEnd) : null
             }));
             displayReminders();
+            
+            // Processar mensagens pendentes do service worker
+            if (navigator.serviceWorker.controller) {
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'APP_READY'
+                });
+            }
         }
 
         // Salvar lembretes
         function saveReminders() {
             localStorage.setItem('reminders', JSON.stringify(reminders));
+            
+            // Notificar service worker sobre mudanças
+            if (swRegistration && swRegistration.active) {
+                swRegistration.active.postMessage({
+                    type: 'REMINDERS_UPDATED'
+                });
+            }
         }
 
         // Adicionar lembrete
@@ -784,6 +798,38 @@
             document.getElementById('alertModal').classList.remove('show');
             currentAlertReminder = null;
         }
+        
+        // Adiar lembrete por ID (chamado pelo service worker)
+        function snoozeReminderById(reminderId, minutes) {
+            const reminder = reminders.find(r => r.id === reminderId);
+            if (!reminder) return;
+            
+            const newTime = new Date(reminder.time);
+            newTime.setMinutes(newTime.getMinutes() + minutes);
+            reminder.time = newTime;
+            reminder.notified = false;
+            
+            saveReminders();
+            displayReminders();
+            showNotification(`Lembrete adiado por ${minutes} minutos`);
+            
+            // Agendar nova verificação
+            const timeUntilReminder = newTime - new Date();
+            if (timeUntilReminder > 0) {
+                setTimeout(() => {
+                    checkReminders();
+                }, timeUntilReminder);
+                
+                // Agendar no service worker
+                if (swRegistration && swRegistration.active) {
+                    swRegistration.active.postMessage({
+                        type: 'SCHEDULE_ALARM',
+                        reminderId: reminder.id,
+                        timeUntilReminder: timeUntilReminder
+                    });
+                }
+            }
+        }
 
         // Concluir a partir do alerta
         function completeFromAlert() {
@@ -824,6 +870,10 @@
                     sendRemindersToServiceWorker();
                 } else if (event.data && event.data.type === 'CHECK_NOW') {
                     checkReminders();
+                } else if (event.data && event.data.type === 'SNOOZE_REMINDER') {
+                    snoozeReminderById(event.data.reminderId, event.data.minutes);
+                } else if (event.data && event.data.type === 'COMPLETE_REMINDER') {
+                    completeReminder(event.data.reminderId);
                 }
             });
         }
