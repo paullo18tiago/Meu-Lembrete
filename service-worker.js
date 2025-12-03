@@ -59,23 +59,78 @@ function checkRemindersInBackground() {
 
 // Mostrar notificação
 self.addEventListener('notificationclick', event => {
+  const action = event.action;
+  const reminderId = event.notification.data ? event.notification.data.reminderId : null;
+  
   event.notification.close();
   
-  event.waitUntil(
-    clients.matchAll({ type: 'window' }).then(clientList => {
-      // Se já existe uma janela aberta, focar nela
-      for (let i = 0; i < clientList.length; i++) {
-        const client = clientList[i];
-        if (client.url === '/' && 'focus' in client) {
-          return client.focus();
+  if (action === 'snooze' && reminderId) {
+    // Adiar 5 minutos
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        // Enviar mensagem para todos os clientes (apps abertos)
+        clientList.forEach(client => {
+          client.postMessage({
+            type: 'SNOOZE_REMINDER',
+            reminderId: reminderId,
+            minutes: 5
+          });
+        });
+        
+        // Se não há clientes abertos, abrir o app
+        if (clientList.length === 0) {
+          return clients.openWindow('./').then(client => {
+            // Aguardar um pouco para o app carregar
+            setTimeout(() => {
+              client.postMessage({
+                type: 'SNOOZE_REMINDER',
+                reminderId: reminderId,
+                minutes: 5
+              });
+            }, 1000);
+          });
         }
-      }
-      // Caso contrário, abrir nova janela
-      if (clients.openWindow) {
-        return clients.openWindow('./');
-      }
-    })
-  );
+      })
+    );
+  } else if (action === 'complete' && reminderId) {
+    // Concluir lembrete
+    event.waitUntil(
+      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        clientList.forEach(client => {
+          client.postMessage({
+            type: 'COMPLETE_REMINDER',
+            reminderId: reminderId
+          });
+        });
+        
+        if (clientList.length === 0) {
+          return clients.openWindow('./').then(client => {
+            setTimeout(() => {
+              client.postMessage({
+                type: 'COMPLETE_REMINDER',
+                reminderId: reminderId
+              });
+            }, 1000);
+          });
+        }
+      })
+    );
+  } else {
+    // Clique normal na notificação - abrir app
+    event.waitUntil(
+      clients.matchAll({ type: 'window' }).then(clientList => {
+        for (let i = 0; i < clientList.length; i++) {
+          const client = clientList[i];
+          if ('focus' in client) {
+            return client.focus();
+          }
+        }
+        if (clients.openWindow) {
+          return clients.openWindow('./');
+        }
+      })
+    );
+  }
 });
 
 // Manter service worker ativo
