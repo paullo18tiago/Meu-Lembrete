@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lembretes-v2';
+const CACHE_NAME = 'lembretes-v3';
 const urlsToCache = [
   './',
   './index.html'
@@ -7,6 +7,77 @@ const urlsToCache = [
 let storedReminders = [];
 let checkInterval = null;
 let wakeLock = null;
+
+// Cache local para lembretes (IndexedDB seria ideal, mas vamos usar variável global)
+const DB_NAME = 'reminders-db';
+const DB_VERSION = 1;
+let db = null;
+
+// Inicializar IndexedDB para persistir lembretes no SW
+async function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      console.log('✅ SW: IndexedDB inicializado');
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains('reminders')) {
+        db.createObjectStore('reminders', { keyPath: 'id' });
+        console.log('✅ SW: ObjectStore criado');
+      }
+    };
+  });
+}
+
+// Carregar lembretes do IndexedDB
+async function loadRemindersFromDB() {
+  if (!db) await initDB();
+  
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['reminders'], 'readonly');
+    const store = transaction.objectStore('reminders');
+    const request = store.getAll();
+    
+    request.onsuccess = () => {
+      storedReminders = request.result || [];
+      console.log('📥 SW: Lembretes carregados do DB:', storedReminders.length);
+      resolve(storedReminders);
+    };
+    
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Salvar lembretes no IndexedDB
+async function saveRemindersToDB(reminders) {
+  if (!db) await initDB();
+  
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['reminders'], 'readwrite');
+    const store = transaction.objectStore('reminders');
+    
+    // Limpar store
+    store.clear();
+    
+    // Adicionar todos os lembretes
+    reminders.forEach(reminder => {
+      store.put(reminder);
+    });
+    
+    transaction.oncomplete = () => {
+      console.log('💾 SW: Lembretes salvos no DB');
+      resolve();
+    };
+    
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
 
 // Instalar Service Worker
 self.addEventListener('install', event => {
@@ -22,19 +93,23 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   console.log('✅ SW: Ativando...');
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    Promise.all([
+      caches.keys().then(cacheNames => {
+        return Promise.all(
+          cacheNames.map(cacheName => {
+            if (cacheName !== CACHE_NAME) {
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      initDB().then(() => loadRemindersFromDB())
+    ]).then(() => {
+      self.clients.claim();
+      // Iniciar verificação periódica imediatamente
+      startPeriodicCheck();
+    })
   );
-  
-  // Iniciar verificação periódica imediatamente
-  startPeriodicCheck();
 });
 
 // Interceptar requisições
@@ -53,8 +128,11 @@ self.addEventListener('message', event => {
     storedReminders = event.data.reminders || [];
     console.log('📝 SW: Lembretes atualizados:', storedReminders.length);
     
-    // Reiniciar verificação com novos lembretes
-    startPeriodicCheck();
+    // Salvar no IndexedDB para persistir
+    saveRemindersToDB(storedReminders).then(() => {
+      // Reiniciar verificação com novos lembretes
+      startPeriodicCheck();
+    });
     
   } else if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     // Mostrar notificação imediatamente
@@ -85,20 +163,23 @@ function startPeriodicCheck() {
     clearInterval(checkInterval);
   }
   
-  // Verificar a cada 5 segundos (ainda mais frequente)
-  checkInterval = setInterval(() => {
+  // Carregar lembretes do DB antes de iniciar
+  loadRemindersFromDB().then(() => {
+    // Verificar a cada 5 segundos (ainda mais frequente)
+    checkInterval = setInterval(() => {
+      checkRemindersInBackground();
+    }, 5000);
+    
+    // Verificar imediatamente
     checkRemindersInBackground();
-  }, 5000);
-  
-  // Verificar imediatamente
-  checkRemindersInBackground();
-  
-  // Manter uma verificação extra a cada 30 segundos como backup
-  setInterval(() => {
-    checkRemindersInBackground();
-  }, 30000);
-  
-  console.log('⏰ SW: Verificação periódica iniciada (5s + backup 30s)');
+    
+    // Manter uma verificação extra a cada 30 segundos como backup
+    setInterval(() => {
+      checkRemindersInBackground();
+    }, 30000);
+    
+    console.log('⏰ SW: Verificação periódica iniciada (5s + backup 30s)');
+  });
 }
 
 // Verificar lembretes em segundo plano
@@ -194,7 +275,7 @@ function notifyApp(reminderId) {
   });
 }
 
-// Tratar cliques na notificação
+// Tratar cliques na notificação - PROCESSAR DIRETO NO SW
 self.addEventListener('notificationclick', event => {
   console.log('👆 SW: Clique na notificação:', event.action);
   
@@ -202,64 +283,45 @@ self.addEventListener('notificationclick', event => {
   event.notification.close();
   
   if (event.action === 'snooze' && reminderId) {
-    console.log('⏰ SW: Adiando lembrete:', reminderId);
+    console.log('⏰ SW: Adiando lembrete DIRETO no SW:', reminderId);
     
-    // Enviar mensagem para o app adiar E fechar modal
+    // PROCESSAR ADIAR DIRETO NO SERVICE WORKER (não depende do app)
     event.waitUntil(
-      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-        if (clientList.length > 0) {
-          // App está aberto - enviar mensagem
-          clientList.forEach(client => {
-            client.postMessage({
-              type: 'SNOOZE_REMINDER',
-              reminderId: reminderId,
-              minutes: 5,
-              closeModal: true // IMPORTANTE: fechar modal quando vier da notificação
-            });
-          });
-        } else {
-          // App está fechado - abrir e enviar mensagem
-          return self.clients.openWindow('/').then(client => {
-            setTimeout(() => {
+      snoozeReminderInSW(reminderId, 5).then(() => {
+        // Notificar o app SE estiver aberto
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+          if (clientList.length > 0) {
+            clientList.forEach(client => {
               client.postMessage({
                 type: 'SNOOZE_REMINDER',
                 reminderId: reminderId,
                 minutes: 5,
                 closeModal: true
               });
-            }, 1000);
-          });
-        }
+            });
+          }
+        });
       })
     );
     
   } else if (event.action === 'complete' && reminderId) {
-    console.log('✅ SW: Concluindo lembrete:', reminderId);
+    console.log('✅ SW: Concluindo lembrete DIRETO no SW:', reminderId);
     
-    // Enviar mensagem para o app concluir E fechar modal
+    // PROCESSAR CONCLUSÃO DIRETO NO SERVICE WORKER
     event.waitUntil(
-      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-        if (clientList.length > 0) {
-          // App está aberto - enviar mensagem
-          clientList.forEach(client => {
-            client.postMessage({
-              type: 'COMPLETE_REMINDER',
-              reminderId: reminderId,
-              closeModal: true // IMPORTANTE: fechar modal quando vier da notificação
-            });
-          });
-        } else {
-          // App está fechado - abrir e enviar mensagem
-          return self.clients.openWindow('/').then(client => {
-            setTimeout(() => {
+      completeReminderInSW(reminderId).then(() => {
+        // Notificar o app SE estiver aberto
+        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+          if (clientList.length > 0) {
+            clientList.forEach(client => {
               client.postMessage({
                 type: 'COMPLETE_REMINDER',
                 reminderId: reminderId,
                 closeModal: true
               });
-            }, 1000);
-          });
-        }
+            });
+          }
+        });
       })
     );
     
@@ -302,6 +364,214 @@ self.addEventListener('push', event => {
   console.log('📬 SW: Push recebido');
   event.waitUntil(checkRemindersInBackground());
 });
+
+// Adiar lembrete DIRETO no Service Worker (sem depender do app)
+async function snoozeReminderInSW(reminderId, minutes) {
+  console.log('⏰ SW: Processando adiar:', reminderId, minutes, 'min');
+  
+  // Carregar lembretes do DB
+  await loadRemindersFromDB();
+  
+  const reminder = storedReminders.find(r => r.id === reminderId);
+  if (!reminder) {
+    console.log('❌ SW: Lembrete não encontrado:', reminderId);
+    return;
+  }
+  
+  // Adiar todas as execuções pendentes
+  if (!reminder.nextExecutions && reminder.time) {
+    // Formato antigo
+    const newTime = new Date(reminder.time);
+    newTime.setMinutes(newTime.getMinutes() + minutes);
+    reminder.time = newTime;
+    reminder.notified = false;
+  } else if (reminder.nextExecutions) {
+    // Novo formato
+    reminder.nextExecutions = reminder.nextExecutions.map(exec => {
+      if (new Date(exec.time) <= new Date()) {
+        const newTime = new Date(exec.time);
+        newTime.setMinutes(newTime.getMinutes() + minutes);
+        return {
+          ...exec,
+          time: newTime,
+          notified: false
+        };
+      }
+      return exec;
+    });
+  }
+  
+  // Salvar no DB
+  await saveRemindersToDB(storedReminders);
+  
+  console.log('✅ SW: Lembrete adiado e salvo no DB');
+  
+  // Reagendar verificação
+  startPeriodicCheck();
+}
+
+// Concluir lembrete DIRETO no Service Worker
+async function completeReminderInSW(reminderId) {
+  console.log('✅ SW: Processando conclusão:', reminderId);
+  
+  // Carregar lembretes do DB
+  await loadRemindersFromDB();
+  
+  const reminder = storedReminders.find(r => r.id === reminderId);
+  if (!reminder) {
+    console.log('❌ SW: Lembrete não encontrado:', reminderId);
+    return;
+  }
+  
+  // Verificar se tem recorrência
+  if (!reminder.schedules || !reminder.nextExecutions) {
+    // Formato antigo ou sem recorrência - apenas marcar como concluído
+    reminder.completed = true;
+  } else {
+    // Novo sistema: Recalcular todas as próximas execuções
+    let hasMoreExecutions = false;
+    
+    reminder.nextExecutions = reminder.schedules.map((schedule, index) => {
+      const currentExec = reminder.nextExecutions.find(e => e.scheduleIndex === index);
+      
+      // Se já passou, calcular próxima
+      if (currentExec && new Date(currentExec.time) <= new Date()) {
+        const nextTime = calculateNextRecurrenceForSchedule(schedule, new Date(currentExec.time));
+        
+        if (nextTime) {
+          hasMoreExecutions = true;
+          return {
+            scheduleIndex: index,
+            time: nextTime,
+            notified: false
+          };
+        }
+      } else if (currentExec) {
+        // Ainda não passou, manter
+        hasMoreExecutions = true;
+        return currentExec;
+      }
+      
+      return null;
+    }).filter(e => e !== null);
+    
+    if (!hasMoreExecutions) {
+      reminder.completed = true;
+    }
+  }
+  
+  // Salvar no DB
+  await saveRemindersToDB(storedReminders);
+  
+  console.log('✅ SW: Lembrete processado e salvo no DB');
+  
+  // Reagendar verificação
+  startPeriodicCheck();
+}
+
+// Calcular próxima recorrência (copiado do index.html)
+function calculateNextRecurrenceForSchedule(schedule, currentTime) {
+  if (schedule.scheduleType === 'specific') {
+    if (schedule.recurrenceType === 'none') return null;
+    
+    const nextTime = getNextRecurrence(currentTime, schedule.recurrenceType);
+    if (schedule.recurrenceEnd && nextTime > new Date(schedule.recurrenceEnd)) {
+      return null;
+    }
+    return nextTime;
+    
+  } else if (schedule.scheduleType === 'interval') {
+    const nextTime = new Date(currentTime);
+    
+    if (schedule.intervalUnit === 'minutes') {
+      nextTime.setMinutes(nextTime.getMinutes() + schedule.intervalValue);
+    } else if (schedule.intervalUnit === 'hours') {
+      nextTime.setHours(nextTime.getHours() + schedule.intervalValue);
+    } else if (schedule.intervalUnit === 'days') {
+      nextTime.setDate(nextTime.getDate() + schedule.intervalValue);
+    }
+    
+    if (schedule.intervalEnd && nextTime > new Date(schedule.intervalEnd)) {
+      return null;
+    }
+    return nextTime;
+    
+  } else if (schedule.scheduleType === 'complex') {
+    return calculateNextComplexTime(schedule);
+  }
+  
+  return null;
+}
+
+// Calcular próxima recorrência simples
+function getNextRecurrence(currentDate, type) {
+  const next = new Date(currentDate);
+  
+  switch(type) {
+    case 'daily':
+      next.setDate(next.getDate() + 1);
+      break;
+    case 'weekly':
+      next.setDate(next.getDate() + 7);
+      break;
+    case 'monthly':
+      next.setMonth(next.getMonth() + 1);
+      break;
+  }
+  
+  return next;
+}
+
+// Calcular próximo horário complexo
+function calculateNextComplexTime(schedule) {
+  const now = new Date();
+  
+  if (schedule.type === 'time') {
+    return new Date(schedule.time);
+  } else if (schedule.type === 'daily') {
+    const [hours, minutes] = schedule.time.split(':');
+    const next = new Date();
+    next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    
+    if (next <= now) {
+      next.setDate(next.getDate() + 1);
+    }
+    return next;
+  } else if (schedule.type === 'weekly') {
+    const [hours, minutes] = schedule.time.split(':');
+    const currentDay = now.getDay();
+    
+    let daysUntilNext = 7;
+    for (let day of schedule.weekdays.sort()) {
+      const diff = day - currentDay;
+      if (diff > 0 || (diff === 0 && now.getHours() * 60 + now.getMinutes() < parseInt(hours) * 60 + parseInt(minutes))) {
+        daysUntilNext = diff > 0 ? diff : 0;
+        break;
+      }
+    }
+    
+    if (daysUntilNext === 7) {
+      daysUntilNext = 7 - currentDay + schedule.weekdays[0];
+    }
+    
+    const next = new Date(now);
+    next.setDate(next.getDate() + daysUntilNext);
+    next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    return next;
+  } else if (schedule.type === 'monthly') {
+    const [hours, minutes] = schedule.time.split(':');
+    const next = new Date();
+    next.setDate(schedule.day);
+    next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    
+    if (next <= now) {
+      next.setMonth(next.getMonth() + 1);
+    }
+    return next;
+  }
+  
+  return new Date();
+}
 
 // Manter o SW vivo com múltiplas estratégias
 setInterval(() => {
