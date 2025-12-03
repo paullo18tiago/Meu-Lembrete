@@ -533,10 +533,11 @@
             <button id="installButton" class="btn" style="display: none; max-width: 300px; margin: 15px auto 0;">
                 📲 Instalar App
             </button>
-            <!-- BOTÃO DE DEBUG - ATIVADO -->
-            <button onclick="debugReminders()" class="btn-secondary" style="max-width: 300px; margin: 10px auto 0;">
-                🐛 Debug Lembretes
+            <!-- BOTÃO DE TESTE - DESCOMENTE PARA ATIVAR
+            <button onclick="testarNotificacao()" class="btn-secondary" style="max-width: 300px; margin: 10px auto 0;">
+                🔔 Testar Notificação
             </button>
+            -->
         </div>
 
         <div class="tabs">
@@ -1631,69 +1632,6 @@
             currentAlertReminder = null;
         }
 
-// Função de debug
-        function debugReminders() {
-            console.log('🐛 ===== DEBUG DE LEMBRETES =====');
-            console.log('📋 Lembretes no App:', reminders);
-            console.log('💾 Lembretes no localStorage:', JSON.parse(localStorage.getItem('reminders') || '[]'));
-            
-            // Mostrar próximos horários
-            reminders.forEach(r => {
-                if (!r.completed) {
-                    if (r.nextExecutions && r.nextExecutions.length > 0) {
-                        const nextExec = r.nextExecutions[0];
-                        console.log(`📅 APP [${r.title}] Próximo: ${new Date(nextExec.time).toLocaleString()} | Notificado: ${nextExec.notified}`);
-                    } else if (r.time) {
-                        console.log(`📅 APP [${r.title}] Próximo: ${new Date(r.time).toLocaleString()} | Notificado: ${r.notified}`);
-                    }
-                }
-            });
-            
-            if (swRegistration && swRegistration.active) {
-                // Pedir ao SW para mostrar seus lembretes
-                const channel = new MessageChannel();
-                channel.port1.onmessage = (event) => {
-                    if (event.data.type === 'DEBUG_RESPONSE') {
-                        console.log('🔧 Lembretes no Service Worker:', event.data.reminders);
-                        
-                        let msg = 'Debug completo! Veja o console (F12) para detalhes.\n\n';
-                        msg += 'App: ' + reminders.length + ' lembretes\n';
-                        msg += 'SW: ' + event.data.reminders.length + ' lembretes\n\n';
-                        
-                        // Comparar horários
-                        const appReminder = reminders[0];
-                        const swReminder = event.data.reminders[0];
-                        
-                        if (appReminder && swReminder) {
-                            const appTime = appReminder.nextExecutions ? 
-                                new Date(appReminder.nextExecutions[0].time) : 
-                                new Date(appReminder.time);
-                            const swTime = swReminder.nextExecutions ? 
-                                new Date(swReminder.nextExecutions[0].time) : 
-                                new Date(swReminder.time);
-                            
-                            msg += 'Próximo horário:\n';
-                            msg += 'App: ' + appTime.toLocaleTimeString() + '\n';
-                            msg += 'SW: ' + swTime.toLocaleTimeString();
-                            
-                            if (appTime.getTime() !== swTime.getTime()) {
-                                msg += '\n\n⚠️ HORÁRIOS DIFERENTES!';
-                            }
-                        }
-                        
-                        alert(msg);
-                    }
-                };
-                
-                swRegistration.active.postMessage(
-                    { type: 'DEBUG_REQUEST' },
-                    [channel.port2]
-                );
-            } else {
-                alert('Service Worker não está ativo!');
-            }
-        }
-
 // FUNÇÃO DE TESTE - DESCOMENTE PARA ATIVAR
         /*
         function testarNotificacao() {
@@ -1766,67 +1704,13 @@
                 }
                 
                 // Processar mensagens do SW
-                if (event.data.type === 'SYNC_REMINDERS_TO_LOCALSTORAGE') {
-                    console.log('🔄 [GLOBAL] Sincronizando lembretes do SW para localStorage');
-                    
-                    // Receber lembretes atualizados do SW e salvar no localStorage
-                    reminders = event.data.reminders.map(r => {
-                        const reminder = {...r};
-                        
-                        // Converter datas nos schedules
-                        if (reminder.schedules) {
-                            reminder.schedules = reminder.schedules.map(s => ({
-                                ...s,
-                                time: s.time ? (typeof s.time === 'string' && s.time.includes(':') && !s.time.includes('T') ? s.time : new Date(s.time)) : null,
-                                recurrenceEnd: s.recurrenceEnd ? new Date(s.recurrenceEnd) : null,
-                                intervalEnd: s.intervalEnd ? new Date(s.intervalEnd) : null
-                            }));
-                        }
-                        
-                        // Converter datas nas execuções
-                        if (reminder.nextExecutions) {
-                            reminder.nextExecutions = reminder.nextExecutions.map(e => ({
-                                ...e,
-                                time: new Date(e.time)
-                            }));
-                        }
-                        
-                        return reminder;
-                    });
-                    
-                    // Salvar no localStorage
-                    localStorage.setItem('reminders', JSON.stringify(reminders));
-                    
-                    // Atualizar UI
-                    displayReminders();
-                    
-                    console.log('✅ [GLOBAL] Lembretes sincronizados com sucesso');
-                    
-                } else if (event.data.type === 'SNOOZE_REMINDER') {
-                    console.log('⏰ [GLOBAL] SW processou adiar:', event.data.reminderId);
-                    
-                    // SW já sincronizou via SYNC_REMINDERS_TO_LOCALSTORAGE
-                    // Apenas fechar modal se solicitado
-                    if (event.data.closeModal) {
-                        const modal = document.getElementById('alertModal');
-                        if (modal) {
-                            modal.classList.remove('show');
-                        }
-                        currentAlertReminder = null;
-                    }
+                if (event.data.type === 'SNOOZE_REMINDER') {
+                    console.log('⏰ [GLOBAL] SW pediu para adiar:', event.data.reminderId, 'closeModal:', event.data.closeModal);
+                    snoozeReminderById(event.data.reminderId, event.data.minutes, event.data.closeModal);
                     
                 } else if (event.data.type === 'COMPLETE_REMINDER') {
-                    console.log('✅ [GLOBAL] SW processou conclusão:', event.data.reminderId);
-                    
-                    // SW já sincronizou via SYNC_REMINDERS_TO_LOCALSTORAGE
-                    // Apenas fechar modal se solicitado
-                    if (event.data.closeModal) {
-                        const modal = document.getElementById('alertModal');
-                        if (modal) {
-                            modal.classList.remove('show');
-                        }
-                        currentAlertReminder = null;
-                    }
+                    console.log('✅ [GLOBAL] SW pediu para concluir:', event.data.reminderId, 'closeModal:', event.data.closeModal);
+                    completeReminderFromNotification(event.data.reminderId, event.data.closeModal);
                 }
             });
         }
@@ -1837,13 +1721,7 @@
                     swRegistration = registration;
                     console.log('✅ Service Worker registrado');
                     
-                    // Forçar atualização do SW a cada 5 minutos
-                    setInterval(() => {
-                        registration.update();
-                        console.log('🔄 SW atualizado');
-                    }, 5 * 60 * 1000);
-                    
-                    // Atualização imediata
+                    // Forçar atualização do SW
                     registration.update();
                     
                     // Solicitar permissão para notificações
@@ -1857,11 +1735,6 @@
                     setTimeout(() => {
                         sendRemindersToServiceWorker();
                     }, 1000);
-                    
-                    // Re-enviar lembretes periodicamente (backup)
-                    setInterval(() => {
-                        sendRemindersToServiceWorker();
-                    }, 2 * 60 * 1000); // A cada 2 minutos
                 })
                 .catch(error => console.log('❌ Erro ao registrar Service Worker:', error));
 
@@ -1935,7 +1808,7 @@
 
 // Sistema de Keep-Alive para manter SW ativo
         function startKeepAlive() {
-            // Ping ao SW a cada 10 segundos (mais frequente)
+            // Ping ao SW a cada 20 segundos
             setInterval(() => {
                 if (swRegistration && swRegistration.active) {
                     const channel = new MessageChannel();
@@ -1950,24 +1823,14 @@
                         [channel.port2]
                     );
                 }
-            }, 10000);
+            }, 20000);
             
-            // Enviar lembretes a cada 15 segundos (mais frequente)
+            // Enviar lembretes a cada 30 segundos
             setInterval(() => {
                 sendRemindersToServiceWorker();
-            }, 15000);
+            }, 30000);
             
-            // Heartbeat visual no console para debug
-            setInterval(() => {
-                console.log('💓 Heartbeat do app:', new Date().toLocaleTimeString());
-            }, 60000); // A cada 1 minuto
-            
-            // Forçar verificação de lembretes mesmo no app
-            setInterval(() => {
-                checkReminders();
-            }, 30000); // A cada 30 segundos
-            
-            console.log('💚 Keep-Alive iniciado (intervalos reduzidos)');
+            console.log('💚 Keep-Alive iniciado');
         }
 
         // Registrar Background Sync para manter SW ativo
@@ -2062,11 +1925,9 @@
             startKeepAlive();
             registerBackgroundSync();
             
-            // Solicitar Wake Lock (ATIVADO por padrão para confiabilidade)
-            // IMPORTANTE: Mantém a tela ligada e o app ativo em segundo plano
-            requestWakeLock();
-            
-            console.log('🔦 Wake Lock ativado automaticamente');
+            // Solicitar Wake Lock (opcional, mas ajuda muito)
+            // NOTA: Isso mantém a tela ligada. Comente a linha abaixo se não quiser isso.
+            // requestWakeLock();
         };
     </script>
 </body>
