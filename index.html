@@ -533,6 +533,9 @@
             <button id="installButton" class="btn" style="display: none; max-width: 300px; margin: 15px auto 0;">
                 📲 Instalar App
             </button>
+            <button onclick="testarNotificacao()" class="btn-secondary" style="max-width: 300px; margin: 10px auto 0;">
+                🔔 Testar Notificação
+            </button>
         </div>
 
         <div class="tabs">
@@ -1430,9 +1433,27 @@
             const now = new Date();
             
             reminders.forEach(reminder => {
-                if (!reminder.completed && !reminder.notified && reminder.time <= now) {
-                    reminder.notified = true;
-                    triggerAlert(reminder);
+                if (reminder.completed) return;
+                
+                // Compatibilidade retroativa
+                if (!reminder.nextExecutions && reminder.time) {
+                    // Lembrete antigo - converter para novo formato
+                    if (!reminder.notified && new Date(reminder.time) <= now) {
+                        reminder.notified = true;
+                        triggerAlert(reminder);
+                    }
+                    return;
+                }
+                
+                // Novo sistema com múltiplos horários
+                if (reminder.nextExecutions) {
+                    reminder.nextExecutions.forEach(execution => {
+                        const execTime = new Date(execution.time);
+                        if (!execution.notified && execTime <= now) {
+                            execution.notified = true;
+                            triggerAlert(reminder);
+                        }
+                    });
                 }
             });
             
@@ -1442,6 +1463,7 @@
 
         // Disparar alerta com som e vibração
         function triggerAlert(reminder) {
+            console.log('🔔 Disparando alerta para:', reminder.title);
             currentAlertReminder = reminder;
             
             // Tocar som
@@ -1453,15 +1475,29 @@
                 navigator.vibrate([200, 100, 200, 100, 200]);
             }
             
-            // Notificação persistente via Service Worker (funciona em segundo plano)
-            if (swRegistration && 'Notification' in window && Notification.permission === 'granted') {
-                showPersistentNotification(reminder);
-            } else if ('Notification' in window && Notification.permission === 'granted') {
-                // Fallback para notificação normal
+            // SEMPRE mostrar o modal primeiro
+            showAlertModal(reminder);
+            
+            // Tentar mostrar notificação do navegador
+            if ('Notification' in window) {
+                if (Notification.permission === 'granted') {
+                    showBrowserNotification(reminder);
+                } else if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            showBrowserNotification(reminder);
+                        }
+                    });
+                }
+            }
+        }
+        
+        // Mostrar notificação do navegador
+        function showBrowserNotification(reminder) {
+            try {
                 const notification = new Notification('⏰ ' + reminder.title, {
                     body: reminder.description || 'Hora do seu lembrete!',
-                    icon: '📝',
-                    badge: '🔔',
+                    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
                     requireInteraction: true,
                     vibrate: [200, 100, 200],
                     tag: 'reminder-' + reminder.id
@@ -1469,13 +1505,11 @@
                 
                 notification.onclick = function() {
                     window.focus();
-                    showAlertModal(reminder);
-                    notification.close();
+                    this.close();
                 };
+            } catch (e) {
+                console.log('Erro ao mostrar notificação:', e);
             }
-            
-            // Mostrar modal de alerta
-            showAlertModal(reminder);
         }
 
         // Mostrar modal de alerta
@@ -1575,10 +1609,48 @@
             currentAlertReminder = null;
         }
 
+// Testar notificação
+        function testarNotificacao() {
+            console.log('🧪 Testando notificação...');
+            
+            if ('Notification' in window) {
+                if (Notification.permission === 'granted') {
+                    const testReminder = {
+                        id: Date.now(),
+                        title: 'Teste de Notificação',
+                        description: 'Se você está vendo isso, as notificações estão funcionando! ✅',
+                        time: new Date()
+                    };
+                    triggerAlert(testReminder);
+                } else if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        if (permission === 'granted') {
+                            testarNotificacao();
+                        } else {
+                            alert('❌ Você precisa permitir notificações nas configurações do navegador.');
+                        }
+                    });
+                } else {
+                    alert('❌ Notificações bloqueadas. Vá nas configurações do navegador e permita notificações para este site.');
+                }
+            } else {
+                alert('❌ Seu navegador não suporta notificações.');
+            }
+        }
+
         // Solicitar permissão de notificação
         function requestNotificationPermission() {
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
+            if ('Notification' in window) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        console.log('Permissão de notificação:', permission);
+                        if (permission === 'granted') {
+                            showNotification('✅ Notificações ativadas!');
+                        }
+                    });
+                } else {
+                    console.log('Status atual de notificação:', Notification.permission);
+                }
             }
         }
 
@@ -1642,33 +1714,14 @@
             }
         }
 
-        // Mostrar notificação persistente via Service Worker
-        function showPersistentNotification(reminder) {
-            if (!swRegistration) return;
-            
-            const options = {
-                body: reminder.description || 'Hora do seu lembrete!',
-                icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
-                badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E🔔%3C/text%3E%3C/svg%3E',
-                vibrate: [200, 100, 200, 100, 200, 100, 200],
-                requireInteraction: true,
-                tag: 'reminder-' + reminder.id,
-                data: { reminderId: reminder.id },
-                actions: [
-                    { action: 'complete', title: '✓ Concluir' },
-                    { action: 'snooze', title: '⏰ Adiar 5min' }
-                ]
-            };
-            
-            swRegistration.showNotification('⏰ ' + reminder.title, options);
-        }
-
         // Inicializar
         window.onload = function() {
+            console.log('🚀 Aplicativo iniciado');
             loadReminders();
             requestNotificationPermission();
             
             // Verificar lembretes a cada 5 segundos para maior precisão
+            console.log('⏰ Verificação automática configurada (5s)');
             checkInterval = setInterval(checkReminders, 5000);
             
             // Verificar imediatamente ao carregar
