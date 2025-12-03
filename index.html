@@ -73,12 +73,15 @@
 
         input[type="text"],
         input[type="datetime-local"],
+        input[type="date"],
+        input[type="time"],
+        input[type="number"],
         select,
         textarea {
             width: 100%;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
+            padding: 7px 9px;
+            border: 1px solid #ddd;
+            border-radius: 7px;
             font-size: 15px;
             transition: border-color 0.3s;
         }
@@ -92,16 +95,16 @@
 
         textarea {
             resize: vertical;
-            min-height: 80px;
+            min-height: 75px;
         }
 
         .btn {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 15px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
@@ -109,8 +112,8 @@
         }
 
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.4);
         }
 
         .btn:active {
@@ -189,19 +192,19 @@
 
         .tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 8px;
+            margin-bottom: 12px;
         }
 
         .tab {
             flex: 1;
-            padding: 10px;
+            padding: 7px;
             background: rgba(255,255,255,0.2);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 600;
             transition: all 0.3s;
         }
@@ -213,8 +216,9 @@
 
         .empty-state {
             text-align: center;
-            padding: 40px;
+            padding: 25px;
             color: #999;
+            font-size: 13px;
         }
 
         .recurrence-options {
@@ -237,6 +241,16 @@
 
         .badge-recurring {
             background: #3498db;
+            color: white;
+        }
+        
+        .badge-interval {
+            background: #9b59b6;
+            color: white;
+        }
+
+        .badge-complex {
+            background: #e67e22;
             color: white;
         }
 
@@ -381,6 +395,134 @@
             10%, 30% { transform: rotate(-10deg); }
             20%, 40% { transform: rotate(10deg); }
         }
+        
+        .schedule-section {
+            animation: fadeIn 0.3s ease;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+            transform: translateY(-1px);
+        }
+
+        .schedules-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px;
+            background: #f8f9fa;
+        }
+
+        .schedule-item {
+            background: white;
+            padding: 8px 10px;
+            border-radius: 5px;
+            margin-bottom: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-left: 3px solid #667eea;
+        }
+
+        .schedule-item-info {
+            flex: 1;
+        }
+
+        .schedule-item-time {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 2px;
+            font-size: 0.85em;
+        }
+
+        .schedule-item-type {
+            font-size: 0.75em;
+            color: #666;
+        }
+
+        .btn-remove-schedule {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn-remove-schedule:hover {
+            background: #c0392b;
+        }
+
+        .schedule-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .schedule-modal.show {
+            display: flex;
+        }
+
+        .schedule-modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: bounceIn 0.5s ease;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        .schedule-modal-header {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .schedule-modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .schedule-modal-buttons button {
+            flex: 1;
+        }
+
+        .empty-schedules {
+            text-align: center;
+            padding: 18px;
+            color: #999;
+            font-size: 13px;
+        }
+        
     </style>
 </head>
 <body>
@@ -400,7 +542,7 @@
         </div>
 
         <div class="card">
-            <h2 style="margin-bottom: 20px;">➕ Novo Lembrete</h2>
+            <h2 style="margin-bottom: 16px;">➕ Novo Lembrete</h2>
             
             <div class="input-group">
                 <label>Título do Lembrete</label>
@@ -408,24 +550,61 @@
             </div>
 
             <div class="input-group">
-                <label>Data e Hora</label>
-                <input type="datetime-local" id="reminderTime">
-            </div>
-
-            <div class="input-group">
-                <label>Repetir?</label>
-                <select id="recurrenceType" onchange="toggleRecurrenceOptions()">
-                    <option value="none">Não repetir</option>
-                    <option value="daily">Diariamente</option>
-                    <option value="weekly">Semanalmente</option>
-                    <option value="monthly">Mensalmente</option>
+                <label>Tipo de Agendamento</label>
+                <select id="scheduleType" onchange="toggleScheduleType()">
+                    <option value="specific">Horário específico</option>
+                    <option value="interval">Intervalo</option>
+                    <option value="complex">Complexo (múltiplos horários)</option>
                 </select>
             </div>
 
-            <div class="recurrence-options" id="recurrenceOptions">
+            <!-- Horário Específico -->
+            <div class="schedule-section" id="specificTimeSection">
                 <div class="input-group">
-                    <label>Repetir até (opcional)</label>
-                    <input type="date" id="recurrenceEnd">
+                    <label>Data e Hora</label>
+                    <input type="datetime-local" id="reminderTime">
+                </div>
+
+                <div class="input-group">
+                    <label>Repetir?</label>
+                    <select id="recurrenceType" onchange="toggleRecurrenceOptions()">
+                        <option value="none">Não repetir</option>
+                        <option value="daily">Diariamente</option>
+                        <option value="weekly">Semanalmente</option>
+                        <option value="monthly">Mensalmente</option>
+                    </select>
+                </div>
+
+                <div class="recurrence-options" id="recurrenceOptions">
+                    <div class="input-group">
+                        <label>Repetir até (opcional)</label>
+                        <input type="date" id="recurrenceEnd">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Intervalo -->
+            <div class="schedule-section" id="intervalSection" style="display: none;">
+                <div class="input-group">
+                    <label>Intervalo</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="intervalValue" min="1" value="30" style="flex: 1;">
+                        <select id="intervalUnit" style="flex: 1;">
+                            <option value="minutes">Minutos</option>
+                            <option value="hours">Horas</option>
+                            <option value="days">Dias</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label>Começar em</label>
+                    <input type="datetime-local" id="intervalStart">
+                </div>
+                
+                <div class="input-group">
+                    <label>Terminar em (opcional)</label>
+                    <input type="datetime-local" id="intervalEnd">
                 </div>
             </div>
 
@@ -434,11 +613,20 @@
                 <textarea id="reminderDescription" placeholder="Adicione detalhes sobre o lembrete..."></textarea>
             </div>
 
+            <div class="input-group">
+                <label>Horários Configurados</label>
+                <div id="mainSchedulesList" class="schedules-list"></div>
+            </div>
+
+            <button type="button" class="btn-secondary" onclick="addScheduleToReminder()" style="margin-bottom: 9px;">
+                ➕ Adicionar Horário
+            </button>
+
             <button class="btn" onclick="addReminder()">Criar Lembrete</button>
         </div>
 
         <div class="card">
-            <h2 style="margin-bottom: 20px;">📋 Lista de Lembretes</h2>
+            <h2 style="margin-bottom: 16px;">📋 Lista de Lembretes</h2>
             <div id="remindersList"></div>
         </div>
     </div>
@@ -457,6 +645,90 @@
             </div>
         </div>
     </div>
+    
+    <!-- Modal para Adicionar Horário -->
+    <div class="schedule-modal" id="scheduleModal">
+        <div class="schedule-modal-content">
+            <div class="schedule-modal-header">➕ Adicionar Horário</div>
+            
+            <div class="input-group">
+                <label>Tipo de Horário</label>
+                <select id="modalScheduleType" onchange="toggleModalScheduleType()">
+                    <option value="time">Horário específico</option>
+                    <option value="daily">Todos os dias</option>
+                    <option value="weekly">Dias da semana</option>
+                    <option value="monthly">Dia do mês</option>
+                </select>
+            </div>
+
+            <!-- Horário Específico -->
+            <div id="modalTimeSection">
+                <div class="input-group">
+                    <label>Data e Hora</label>
+                    <input type="datetime-local" id="modalTime">
+                </div>
+            </div>
+
+            <!-- Diário -->
+            <div id="modalDailySection" style="display: none;">
+                <div class="input-group">
+                    <label>Horário</label>
+                    <input type="time" id="modalDailyTime">
+                </div>
+            </div>
+
+            <!-- Semanal -->
+            <div id="modalWeeklySection" style="display: none;">
+                <div class="input-group">
+                    <label>Dias da Semana</label>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 8px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="0" class="weekday-check"> Domingo
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="1" class="weekday-check"> Segunda
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="2" class="weekday-check"> Terça
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="3" class="weekday-check"> Quarta
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="4" class="weekday-check"> Quinta
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="5" class="weekday-check"> Sexta
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="checkbox" value="6" class="weekday-check"> Sábado
+                        </label>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>Horário</label>
+                    <input type="time" id="modalWeeklyTime">
+                </div>
+            </div>
+
+            <!-- Mensal -->
+            <div id="modalMonthlySection" style="display: none;">
+                <div class="input-group">
+                    <label>Dia do Mês</label>
+                    <input type="number" id="modalMonthlyDay" min="1" max="31" value="1">
+                </div>
+                <div class="input-group">
+                    <label>Horário</label>
+                    <input type="time" id="modalMonthlyTime">
+                </div>
+            </div>
+
+            <div class="schedule-modal-buttons">
+                <button class="btn-secondary" onclick="closeScheduleModal()">Cancelar</button>
+                <button class="btn" onclick="addScheduleToList()">Adicionar</button>
+            </div>
+        </div>
+    </div>
 
     <audio id="notificationSound" preload="auto">
         <source src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAASAAAd8wAUFBQUFCIiIiIiIjAwMDAwPj4+Pj4+TExMTExZWVlZWVlnZ2dnZ3V1dXV1dYODg4ODkZGRkZGRn5+fn5+frKysrKy6urq6urrIyMjIyNbW1tbW1uTk5OTk8vLy8vLy//////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAUKAAAAAAAAHfPzV8GIAAAAAAAAAAAAAAAAAAAA//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xBkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EGQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xBkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EGQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV" type="audio/mpeg">
@@ -467,15 +739,42 @@
         let currentTab = 'all';
         let checkInterval;
         let currentAlertReminder = null;
+        let currentSchedules = []; // Para armazenar múltiplos horários temporariamente
 
         // Carregar lembretes salvos
         function loadReminders() {
             const saved = JSON.parse(localStorage.getItem('reminders') || '[]');
-            reminders = saved.map(r => ({
-                ...r,
-                time: new Date(r.time),
-                recurrenceEnd: r.recurrenceEnd ? new Date(r.recurrenceEnd) : null
-            }));
+            reminders = saved.map(r => {
+                const reminder = {...r};
+                
+                // Converter datas nos schedules
+                if (reminder.schedules) {
+                    reminder.schedules = reminder.schedules.map(s => ({
+                        ...s,
+                        time: s.time ? (typeof s.time === 'string' && s.time.includes(':') && !s.time.includes('T') ? s.time : new Date(s.time)) : null,
+                        recurrenceEnd: s.recurrenceEnd ? new Date(s.recurrenceEnd) : null,
+                        intervalEnd: s.intervalEnd ? new Date(s.intervalEnd) : null
+                    }));
+                }
+                
+                // Converter datas nas execuções
+                if (reminder.nextExecutions) {
+                    reminder.nextExecutions = reminder.nextExecutions.map(e => ({
+                        ...e,
+                        time: new Date(e.time)
+                    }));
+                }
+                
+                // Compatibilidade retroativa
+                if (reminder.time) {
+                    reminder.time = new Date(reminder.time);
+                }
+                if (reminder.recurrenceEnd) {
+                    reminder.recurrenceEnd = new Date(reminder.recurrenceEnd);
+                }
+                
+                return reminder;
+            });
             displayReminders();
             
             // Processar mensagens pendentes do service worker
@@ -501,50 +800,120 @@
         // Adicionar lembrete
         function addReminder() {
             const title = document.getElementById('reminderTitle').value.trim();
-            const time = document.getElementById('reminderTime').value;
             const description = document.getElementById('reminderDescription').value.trim();
-            const recurrenceType = document.getElementById('recurrenceType').value;
-            const recurrenceEnd = document.getElementById('recurrenceEnd').value;
 
-            if (!title || !time) {
-                alert('Por favor, preencha o título e a data/hora do lembrete');
+            if (!title) {
+                alert('Por favor, preencha o título do lembrete');
                 return;
             }
 
+            if (currentSchedules.length === 0) {
+                alert('Por favor, adicione pelo menos um horário');
+                return;
+            }
+
+            // Criar um único lembrete com múltiplos horários
             const reminder = {
                 id: Date.now(),
                 title,
-                time: new Date(time),
                 description,
-                recurrenceType,
-                recurrenceEnd: recurrenceEnd ? new Date(recurrenceEnd) : null,
-                completed: false,
-                notified: false
+                schedules: currentSchedules.map(s => ({...s})), // Copiar array de horários
+                nextExecutions: [], // Será preenchido abaixo
+                completed: false
             };
+
+            // Calcular próximas execuções para cada horário
+            reminder.nextExecutions = currentSchedules.map((schedule, index) => ({
+                scheduleIndex: index,
+                time: calculateNextTimeForSchedule(schedule),
+                notified: false
+            }));
 
             reminders.push(reminder);
             saveReminders();
             displayReminders();
-            
-            // Agendar alarme no service worker para segundo plano
-            const timeUntilReminder = reminder.time - new Date();
-            if (timeUntilReminder > 0 && swRegistration && swRegistration.active) {
-                swRegistration.active.postMessage({
-                    type: 'SCHEDULE_ALARM',
-                    reminderId: reminder.id,
-                    timeUntilReminder: timeUntilReminder
-                });
-            }
 
             // Limpar formulário
             document.getElementById('reminderTitle').value = '';
-            document.getElementById('reminderTime').value = '';
             document.getElementById('reminderDescription').value = '';
+            document.getElementById('reminderTime').value = '';
             document.getElementById('recurrenceType').value = 'none';
             document.getElementById('recurrenceEnd').value = '';
+            document.getElementById('scheduleType').value = 'specific';
+            document.getElementById('intervalValue').value = '30';
+            document.getElementById('intervalUnit').value = 'minutes';
+            document.getElementById('intervalStart').value = '';
+            document.getElementById('intervalEnd').value = '';
+            currentSchedules = [];
+            toggleScheduleType();
             toggleRecurrenceOptions();
+            renderMainSchedulesList();
 
             showNotification('Lembrete criado com sucesso!');
+        }
+
+        // Calcular próximo horário para um agendamento específico
+        function calculateNextTimeForSchedule(schedule) {
+            if (schedule.scheduleType === 'specific') {
+                return schedule.time;
+            } else if (schedule.scheduleType === 'interval') {
+                return schedule.time;
+            } else if (schedule.scheduleType === 'complex') {
+                return calculateNextComplexTime(schedule);
+            }
+            return new Date();
+        }
+
+        // Calcular próximo horário para agendamento complexo
+        function calculateNextComplexTime(schedule) {
+            const now = new Date();
+            
+            if (schedule.type === 'time') {
+                return schedule.time;
+            } else if (schedule.type === 'daily') {
+                const [hours, minutes] = schedule.time.split(':');
+                const next = new Date();
+                next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                
+                if (next <= now) {
+                    next.setDate(next.getDate() + 1);
+                }
+                return next;
+            } else if (schedule.type === 'weekly') {
+                const [hours, minutes] = schedule.time.split(':');
+                const currentDay = now.getDay();
+                
+                // Encontrar o próximo dia da semana
+                let daysUntilNext = 7;
+                for (let day of schedule.weekdays.sort()) {
+                    const diff = day - currentDay;
+                    if (diff > 0 || (diff === 0 && now.getHours() * 60 + now.getMinutes() < parseInt(hours) * 60 + parseInt(minutes))) {
+                        daysUntilNext = diff > 0 ? diff : 0;
+                        break;
+                    }
+                }
+                
+                if (daysUntilNext === 7) {
+                    daysUntilNext = 7 - currentDay + schedule.weekdays[0];
+                }
+                
+                const next = new Date(now);
+                next.setDate(next.getDate() + daysUntilNext);
+                next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                return next;
+            } else if (schedule.type === 'monthly') {
+                const [hours, minutes] = schedule.time.split(':');
+                const next = new Date();
+                next.setDate(schedule.day);
+                next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                
+                if (next <= now) {
+                    next.setMonth(next.getMonth() + 1);
+                }
+                return next;
+            }
+            
+            return new Date();
         }
 
         // Exibir lembretes
@@ -568,21 +937,59 @@
                 return;
             }
 
+// Compatibilidade retroativa - adicionar scheduleType se não existir
+            filtered.forEach(r => {
+                if (!r.scheduleType) {
+                    r.scheduleType = 'specific';
+                    if (!r.recurrenceType) r.recurrenceType = 'none';
+                }
+            });
+
             container.innerHTML = filtered.map(reminder => {
-                const isOverdue = reminder.time <= now;
-                const timeStr = formatDateTime(reminder.time);
+                // Compatibilidade retroativa
+                if (!reminder.schedules) {
+                    reminder.schedules = [{
+                        scheduleType: reminder.scheduleType || 'specific',
+                        time: reminder.time,
+                        recurrenceType: reminder.recurrenceType || 'none',
+                        recurrenceEnd: reminder.recurrenceEnd
+                    }];
+                    reminder.nextExecutions = [{
+                        scheduleIndex: 0,
+                        time: reminder.time,
+                        notified: reminder.notified || false
+                    }];
+                }
+
+                // Encontrar próxima execução
+                const nextExec = reminder.nextExecutions
+                    .filter(e => e.time)
+                    .sort((a, b) => new Date(a.time) - new Date(b.time))[0];
+                
+                if (!nextExec) return '';
+
+                const nextTime = new Date(nextExec.time);
+                const now = new Date();
+                const isOverdue = nextTime <= now;
+                const timeStr = formatDateTime(nextTime);
                 
                 return `
                     <div class="reminder-item ${isOverdue ? 'overdue' : ''}">
                         <div class="reminder-content">
                             <div class="reminder-title">
                                 ${reminder.title}
-                                ${reminder.recurrenceType !== 'none' ? 
-                                    `<span class="badge badge-recurring">🔄 ${getRecurrenceLabel(reminder.recurrenceType)}</span>` 
-                                    : ''}
+                                ${reminder.schedules.length > 1 ? 
+                                    `<span class="badge badge-recurring">📅 ${reminder.schedules.length} horários</span>` 
+                                    : getScheduleBadge(reminder.schedules[0])}
                             </div>
                             <div class="reminder-time">${isOverdue ? '⚠️ ' : '🕐 '}${timeStr}</div>
                             ${reminder.description ? `<div class="reminder-description">${reminder.description}</div>` : ''}
+                            ${reminder.schedules.length > 1 ? `
+                                <div class="reminder-description" style="margin-top: 8px;">
+                                    <strong>Horários configurados:</strong><br>
+                                    ${reminder.schedules.map((s, i) => `• ${s.label || 'Horário ' + (i+1)}`).join('<br>')}
+                                </div>
+                            ` : ''}
                         </div>
                         <div class="reminder-actions">
                             <button class="btn-small btn-complete" onclick="completeReminder(${reminder.id})">✓</button>
@@ -593,35 +1000,145 @@
             }).join('');
         }
 
+        // Obter label do tipo principal de agendamento
+        function getScheduleMainTypeLabel(scheduleType) {
+            const labels = {
+                'specific': 'Horário específico',
+                'interval': 'Intervalo',
+                'complex': 'Complexo'
+            };
+            return labels[scheduleType] || scheduleType;
+        }
+
+        // Remover horário da lista
+        function removeSchedule(index) {
+            currentSchedules.splice(index, 1);
+            renderMainSchedulesList();
+        }
+
+        // Obter label do tipo de horário
+        function getScheduleTypeLabel(type) {
+            const labels = {
+                'time': 'Horário específico',
+                'daily': 'Diário',
+                'weekly': 'Semanal',
+                'monthly': 'Mensal'
+            };
+            return labels[type] || type;
+        }
+
+        // Trocar aba
+        function showTab(tab) {
+            currentTab = tab;
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            displayReminders();
+        }
+
+        // Mostrar notificação
+        function showNotification(message) {
+            const badge = document.getElementById('notificationBadge');
+            badge.textContent = message;
+            badge.style.display = 'block';
+            
+            setTimeout(() => {
+                badge.style.display = 'none';
+            }, 3000);
+        }
+        
         // Completar lembrete
         function completeReminder(id) {
             const reminder = reminders.find(r => r.id === id);
             if (!reminder) return;
             
-            // Fechar modal se estiver aberto para este lembrete
+            // Fechar modal se estiver aberto
             if (currentAlertReminder && currentAlertReminder.id === id) {
                 document.getElementById('alertModal').classList.remove('show');
                 currentAlertReminder = null;
             }
 
-            if (reminder.recurrenceType !== 'none') {
-                // Criar próxima ocorrência
-                const nextTime = getNextRecurrence(reminder.time, reminder.recurrenceType);
-                
-                if (!reminder.recurrenceEnd || nextTime <= reminder.recurrenceEnd) {
-                    reminder.time = nextTime;
-                    reminder.notified = false;
-                    saveReminders();
-                    displayReminders();
-                    showNotification('Próxima ocorrência agendada!');
-                    return;
-                }
+            // Compatibilidade retroativa - lembretes antigos
+            if (!reminder.schedules || !reminder.nextExecutions) {
+                reminder.completed = true;
+                saveReminders();
+                displayReminders();
+                showNotification('Lembrete concluído!');
+                return;
             }
 
-            reminder.completed = true;
-            saveReminders();
-            displayReminders();
-            showNotification('Lembrete concluído!');
+            // Novo sistema: Recalcular todas as próximas execuções
+            let hasMoreExecutions = false;
+            
+            reminder.nextExecutions = reminder.schedules.map((schedule, index) => {
+                const currentExec = reminder.nextExecutions.find(e => e.scheduleIndex === index);
+                
+                // Se já passou, calcular próxima
+                if (currentExec && new Date(currentExec.time) <= new Date()) {
+                    const nextTime = calculateNextRecurrenceForSchedule(schedule, new Date(currentExec.time));
+                    
+                    if (nextTime) {
+                        hasMoreExecutions = true;
+                        return {
+                            scheduleIndex: index,
+                            time: nextTime,
+                            notified: false
+                        };
+                    }
+                } else if (currentExec) {
+                    // Ainda não passou, manter
+                    hasMoreExecutions = true;
+                    return currentExec;
+                }
+                
+                return null;
+            }).filter(e => e !== null);
+
+            if (hasMoreExecutions) {
+                saveReminders();
+                displayReminders();
+                showNotification('Próxima ocorrência agendada!');
+            } else {
+                reminder.completed = true;
+                saveReminders();
+                displayReminders();
+                showNotification('Lembrete concluído!');
+            }
+        }
+
+        // Calcular próxima recorrência para um schedule
+        function calculateNextRecurrenceForSchedule(schedule, currentTime) {
+            if (schedule.scheduleType === 'specific') {
+                if (schedule.recurrenceType === 'none') return null;
+                
+                const nextTime = getNextRecurrence(currentTime, schedule.recurrenceType);
+                if (schedule.recurrenceEnd && nextTime > schedule.recurrenceEnd) {
+                    return null;
+                }
+                return nextTime;
+                
+            } else if (schedule.scheduleType === 'interval') {
+                const nextTime = new Date(currentTime);
+                
+                if (schedule.intervalUnit === 'minutes') {
+                    nextTime.setMinutes(nextTime.getMinutes() + schedule.intervalValue);
+                } else if (schedule.intervalUnit === 'hours') {
+                    nextTime.setHours(nextTime.getHours() + schedule.intervalValue);
+                } else if (schedule.intervalUnit === 'days') {
+                    nextTime.setDate(nextTime.getDate() + schedule.intervalValue);
+                }
+                
+                if (schedule.intervalEnd && nextTime > new Date(schedule.intervalEnd)) {
+                    return null;
+                }
+                return nextTime;
+                
+            } else if (schedule.scheduleType === 'complex') {
+                return calculateNextComplexTime(schedule);
+            }
+            
+            return null;
         }
 
         // Deletar lembrete
@@ -679,6 +1196,19 @@
             return labels[type] || '';
         }
 
+        // Obter badge de agendamento
+        function getScheduleBadge(reminder) {
+            if (reminder.scheduleType === 'specific' && reminder.recurrenceType !== 'none') {
+                return `<span class="badge badge-recurring">🔄 ${getRecurrenceLabel(reminder.recurrenceType)}</span>`;
+            } else if (reminder.scheduleType === 'interval') {
+                const unitLabels = { 'minutes': 'min', 'hours': 'h', 'days': 'd' };
+                return `<span class="badge badge-recurring">⏱️ ${reminder.intervalValue}${unitLabels[reminder.intervalUnit]}</span>`;
+            } else if (reminder.scheduleType === 'complex' && reminder.complexSchedule) {
+                return `<span class="badge badge-recurring">📅 ${getScheduleTypeLabel(reminder.complexSchedule.type)}</span>`;
+            }
+            return '';
+        }
+
         // Mostrar/ocultar opções de recorrência
         function toggleRecurrenceOptions() {
             const type = document.getElementById('recurrenceType').value;
@@ -691,25 +1221,208 @@
             }
         }
 
-        // Trocar aba
-        function showTab(tab) {
-            currentTab = tab;
+        // Alternar tipo de agendamento
+        function toggleScheduleType() {
+            const type = document.getElementById('scheduleType').value;
             
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            event.target.classList.add('active');
+            // Ocultar todas as seções
+            document.getElementById('specificTimeSection').style.display = 'none';
+            document.getElementById('intervalSection').style.display = 'none';
             
-            displayReminders();
+            // Mostrar seção apropriada
+            if (type === 'specific') {
+                document.getElementById('specificTimeSection').style.display = 'block';
+            } else if (type === 'interval') {
+                document.getElementById('intervalSection').style.display = 'block';
+                setDefaultIntervalTime();
+            } else if (type === 'complex') {
+                // Modo complexo não tem campos adicionais, apenas botão de adicionar horário
+            }
         }
 
-        // Mostrar notificação
-        function showNotification(message) {
-            const badge = document.getElementById('notificationBadge');
-            badge.textContent = message;
-            badge.style.display = 'block';
+        // Definir hora padrão para intervalo
+        function setDefaultIntervalTime() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('intervalStart').value = now.toISOString().slice(0, 16);
+        }
+
+        // Alternar tipo de horário no modal
+        function toggleModalScheduleType() {
+            const type = document.getElementById('modalScheduleType').value;
             
-            setTimeout(() => {
-                badge.style.display = 'none';
-            }, 3000);
+            // Ocultar todas as seções
+            document.getElementById('modalTimeSection').style.display = 'none';
+            document.getElementById('modalDailySection').style.display = 'none';
+            document.getElementById('modalWeeklySection').style.display = 'none';
+            document.getElementById('modalMonthlySection').style.display = 'none';
+            
+            // Mostrar seção apropriada
+            if (type === 'time') {
+                document.getElementById('modalTimeSection').style.display = 'block';
+            } else if (type === 'daily') {
+                document.getElementById('modalDailySection').style.display = 'block';
+            } else if (type === 'weekly') {
+                document.getElementById('modalWeeklySection').style.display = 'block';
+            } else if (type === 'monthly') {
+                document.getElementById('modalMonthlySection').style.display = 'block';
+            }
+        }
+
+        // Abrir modal de horário
+        function openScheduleModal() {
+            document.getElementById('scheduleModal').classList.add('show');
+            toggleModalScheduleType();
+        }
+
+        // Fechar modal de horário
+        function closeScheduleModal() {
+            document.getElementById('scheduleModal').classList.remove('show');
+            
+            // Limpar campos
+            document.getElementById('modalTime').value = '';
+            document.getElementById('modalDailyTime').value = '';
+            document.getElementById('modalWeeklyTime').value = '';
+            document.getElementById('modalMonthlyTime').value = '';
+            document.getElementById('modalMonthlyDay').value = '1';
+            document.querySelectorAll('.weekday-check').forEach(cb => cb.checked = false);
+        }
+
+        // Adicionar horário ao lembrete (do formulário principal)
+        function addScheduleToReminder() {
+            const scheduleType = document.getElementById('scheduleType').value;
+            let schedule = { scheduleType };
+            
+            if (scheduleType === 'specific') {
+                const time = document.getElementById('reminderTime').value;
+                const recurrenceType = document.getElementById('recurrenceType').value;
+                const recurrenceEnd = document.getElementById('recurrenceEnd').value;
+                
+                if (!time) {
+                    alert('Por favor, selecione uma data e hora');
+                    return;
+                }
+                
+                schedule.time = new Date(time);
+                schedule.recurrenceType = recurrenceType;
+                schedule.recurrenceEnd = recurrenceEnd ? new Date(recurrenceEnd) : null;
+                
+                if (recurrenceType !== 'none') {
+                    schedule.label = `${formatDateTime(schedule.time)} - ${getRecurrenceLabel(recurrenceType)}`;
+                } else {
+                    schedule.label = formatDateTime(schedule.time);
+                }
+                
+            } else if (scheduleType === 'interval') {
+                const intervalValue = parseInt(document.getElementById('intervalValue').value);
+                const intervalUnit = document.getElementById('intervalUnit').value;
+                const intervalStart = document.getElementById('intervalStart').value;
+                const intervalEnd = document.getElementById('intervalEnd').value;
+                
+                if (!intervalStart || intervalValue < 1) {
+                    alert('Por favor, configure o intervalo corretamente');
+                    return;
+                }
+                
+                schedule.intervalValue = intervalValue;
+                schedule.intervalUnit = intervalUnit;
+                schedule.time = new Date(intervalStart);
+                schedule.intervalEnd = intervalEnd ? new Date(intervalEnd) : null;
+                
+                const unitLabels = { 'minutes': 'minutos', 'hours': 'horas', 'days': 'dias' };
+                schedule.label = `A cada ${intervalValue} ${unitLabels[intervalUnit]} desde ${formatDateTime(schedule.time)}`;
+                
+            } else if (scheduleType === 'complex') {
+                alert('Para modo complexo, clique em "Adicionar Horário" e configure no modal');
+                openScheduleModal();
+                return;
+            }
+            
+            currentSchedules.push(schedule);
+            renderMainSchedulesList();
+            showNotification('Horário adicionado!');
+            
+            // Limpar campos
+            document.getElementById('reminderTime').value = '';
+            document.getElementById('recurrenceType').value = 'none';
+            document.getElementById('recurrenceEnd').value = '';
+            document.getElementById('intervalValue').value = '30';
+            document.getElementById('intervalStart').value = '';
+            document.getElementById('intervalEnd').value = '';
+            toggleRecurrenceOptions();
+        }
+
+        // Adicionar horário à lista (do modal)
+        function addScheduleToList() {
+            const type = document.getElementById('modalScheduleType').value;
+            let schedule = { scheduleType: 'complex', type };
+            
+            if (type === 'time') {
+                const time = document.getElementById('modalTime').value;
+                if (!time) {
+                    alert('Por favor, selecione uma data e hora');
+                    return;
+                }
+                schedule.time = new Date(time);
+                schedule.label = formatDateTime(schedule.time);
+            } else if (type === 'daily') {
+                const time = document.getElementById('modalDailyTime').value;
+                if (!time) {
+                    alert('Por favor, selecione um horário');
+                    return;
+                }
+                schedule.time = time;
+                schedule.label = `Todos os dias às ${time}`;
+            } else if (type === 'weekly') {
+                const time = document.getElementById('modalWeeklyTime').value;
+                const days = Array.from(document.querySelectorAll('.weekday-check:checked')).map(cb => parseInt(cb.value));
+                
+                if (!time || days.length === 0) {
+                    alert('Por favor, selecione os dias e o horário');
+                    return;
+                }
+                
+                schedule.time = time;
+                schedule.weekdays = days;
+                const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+                schedule.label = `${days.map(d => dayNames[d]).join(', ')} às ${time}`;
+            } else if (type === 'monthly') {
+                const time = document.getElementById('modalMonthlyTime').value;
+                const day = document.getElementById('modalMonthlyDay').value;
+                
+                if (!time || !day) {
+                    alert('Por favor, selecione o dia e o horário');
+                    return;
+                }
+                
+                schedule.time = time;
+                schedule.day = parseInt(day);
+                schedule.label = `Dia ${day} de cada mês às ${time}`;
+            }
+            
+            currentSchedules.push(schedule);
+            renderMainSchedulesList();
+            closeScheduleModal();
+        }
+
+        // Renderizar lista principal de horários (no formulário)
+        function renderMainSchedulesList() {
+            const container = document.getElementById('mainSchedulesList');
+            
+            if (currentSchedules.length === 0) {
+                container.innerHTML = '<div class="empty-schedules">Nenhum horário configurado. Clique em "Adicionar Horário"</div>';
+                return;
+            }
+            
+            container.innerHTML = currentSchedules.map((schedule, index) => `
+                <div class="schedule-item">
+                    <div class="schedule-item-info">
+                        <div class="schedule-item-time">${schedule.label}</div>
+                        <div class="schedule-item-type">${getScheduleMainTypeLabel(schedule.scheduleType)}</div>
+                    </div>
+                    <button class="btn-remove-schedule" onclick="removeSchedule(${index})">✕</button>
+                </div>
+            `).join('');
         }
 
         // Verificar lembretes vencidos
@@ -968,6 +1681,14 @@
             const now = new Date();
             now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
             document.getElementById('reminderTime').min = now.toISOString().slice(0, 16);
+            document.getElementById('intervalStart').min = now.toISOString().slice(0, 16);
+            document.getElementById('modalTime').min = now.toISOString().slice(0, 16);
+            
+            // Renderizar lista inicial vazia
+            renderMainSchedulesList();
+            
+            // Inicializar visualização de agendamento
+            toggleScheduleType();
         };
     </script>
 </body>
