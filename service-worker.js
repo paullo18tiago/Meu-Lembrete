@@ -60,6 +60,18 @@ self.addEventListener('message', event => {
     // Mostrar notificação imediatamente
     showNotification(event.data.reminder);
     
+  } else if (event.data && event.data.type === 'CLOSE_NOTIFICATION') {
+    // Fechar notificação específica
+    const reminderId = event.data.reminderId;
+    const tag = 'reminder-' + reminderId;
+    
+    self.registration.getNotifications({ tag: tag }).then(notifications => {
+      notifications.forEach(notification => {
+        console.log('🚫 SW: Fechando notificação:', tag);
+        notification.close();
+      });
+    });
+    
   } else if (event.data && event.data.type === 'KEEP_ALIVE') {
     // Responder ao ping de keep-alive
     event.ports[0].postMessage({ type: 'ALIVE' });
@@ -124,8 +136,8 @@ function checkRemindersInBackground() {
 function showNotification(reminder) {
   const options = {
     body: reminder.description || 'Hora do seu lembrete!',
-    icon: '/icon-192.png',
-    badge: '/icon-72.png',
+    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="75" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
+    badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="75" font-size="60" text-anchor="middle" fill="white"%3E🔔%3C/text%3E%3C/svg%3E',
     vibrate: [300, 100, 300, 100, 300, 100, 300],
     requireInteraction: true, // CRÍTICO: mantém a notificação até o usuário interagir
     tag: 'reminder-' + reminder.id,
@@ -136,8 +148,8 @@ function showNotification(reminder) {
       timestamp: Date.now()
     },
     actions: [
-      { action: 'complete', title: '✓ Concluir', icon: '/icon-72.png' },
-      { action: 'snooze', title: '⏰ +5min', icon: '/icon-72.png' }
+      { action: 'complete', title: '✓ Concluir' },
+      { action: 'snooze', title: '⏰ +5min' }
     ]
   };
   
