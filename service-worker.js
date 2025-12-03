@@ -85,15 +85,20 @@ function startPeriodicCheck() {
     clearInterval(checkInterval);
   }
   
-  // Verificar a cada 10 segundos (mais frequente)
+  // Verificar a cada 5 segundos (ainda mais frequente)
   checkInterval = setInterval(() => {
     checkRemindersInBackground();
-  }, 10000);
+  }, 5000);
   
   // Verificar imediatamente
   checkRemindersInBackground();
   
-  console.log('⏰ SW: Verificação periódica iniciada (10s)');
+  // Manter uma verificação extra a cada 30 segundos como backup
+  setInterval(() => {
+    checkRemindersInBackground();
+  }, 30000);
+  
+  console.log('⏰ SW: Verificação periódica iniciada (5s + backup 30s)');
 }
 
 // Verificar lembretes em segundo plano
@@ -153,13 +158,28 @@ function showNotification(reminder) {
     ]
   };
   
-  self.registration.showNotification('⏰ ' + reminder.title, options)
-    .then(() => {
-      console.log('✅ SW: Notificação exibida:', reminder.title);
-    })
-    .catch(err => {
-      console.error('❌ SW: Erro ao exibir notificação:', err);
-    });
+  // Fechar notificação anterior do mesmo lembrete antes de mostrar nova
+  self.registration.getNotifications({ tag: 'reminder-' + reminder.id }).then(notifications => {
+    notifications.forEach(n => n.close());
+  }).then(() => {
+    // Mostrar nova notificação
+    return self.registration.showNotification('⏰ ' + reminder.title, options);
+  }).then(() => {
+    console.log('✅ SW: Notificação exibida:', reminder.title);
+    
+    // Agendar re-notificação após 3 minutos se não interagir (backup)
+    setTimeout(() => {
+      self.registration.getNotifications({ tag: 'reminder-' + reminder.id }).then(notifications => {
+        if (notifications.length > 0) {
+          // Notificação ainda está lá, re-notificar
+          self.registration.showNotification('⏰ LEMBRETE: ' + reminder.title, options);
+          console.log('🔁 SW: Re-notificação enviada:', reminder.title);
+        }
+      });
+    }, 3 * 60 * 1000);
+  }).catch(err => {
+    console.error('❌ SW: Erro ao exibir notificação:', err);
+  });
 }
 
 // Notificar o app sobre lembrete disparado
@@ -283,9 +303,27 @@ self.addEventListener('push', event => {
   event.waitUntil(checkRemindersInBackground());
 });
 
-// Manter o SW vivo com fetch fake periódico
+// Manter o SW vivo com múltiplas estratégias
 setInterval(() => {
   fetch('/?keepalive=' + Date.now()).catch(() => {});
 }, 25000); // A cada 25 segundos
 
-console.log('🚀 SW: Service Worker carregado');
+// Estratégia adicional: auto-mensagem a cada 15 segundos
+setInterval(() => {
+  self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+    if (clients.length > 0) {
+      checkRemindersInBackground();
+    }
+  });
+}, 15000);
+
+// Estratégia 3: Re-registrar periodicsync a cada 5 minutos
+setInterval(async () => {
+  try {
+    await self.registration.sync.register('check-reminders');
+  } catch (err) {
+    console.log('⚠️ Sync re-register falhou:', err);
+  }
+}, 5 * 60 * 1000);
+
+console.log('🚀 SW: Service Worker carregado com estratégias de sobrevivência');
