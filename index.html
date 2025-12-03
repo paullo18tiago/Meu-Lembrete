@@ -1705,12 +1705,38 @@
                 
                 // Processar mensagens do SW
                 if (event.data.type === 'SNOOZE_REMINDER') {
-                    console.log('⏰ [GLOBAL] SW pediu para adiar:', event.data.reminderId, 'closeModal:', event.data.closeModal);
-                    snoozeReminderById(event.data.reminderId, event.data.minutes, event.data.closeModal);
+                    console.log('⏰ [GLOBAL] SW processou adiar:', event.data.reminderId);
+                    
+                    // SW já processou, apenas atualizar UI
+                    const reminder = reminders.find(r => r.id === event.data.reminderId);
+                    if (reminder) {
+                        // Recarregar do localStorage (que foi atualizado pelo SW via IndexedDB)
+                        loadReminders();
+                        
+                        // Fechar modal se solicitado
+                        if (event.data.closeModal) {
+                            const modal = document.getElementById('alertModal');
+                            if (modal) {
+                                modal.classList.remove('show');
+                            }
+                            currentAlertReminder = null;
+                        }
+                    }
                     
                 } else if (event.data.type === 'COMPLETE_REMINDER') {
-                    console.log('✅ [GLOBAL] SW pediu para concluir:', event.data.reminderId, 'closeModal:', event.data.closeModal);
-                    completeReminderFromNotification(event.data.reminderId, event.data.closeModal);
+                    console.log('✅ [GLOBAL] SW processou conclusão:', event.data.reminderId);
+                    
+                    // SW já processou, apenas atualizar UI
+                    loadReminders();
+                    
+                    // Fechar modal se solicitado
+                    if (event.data.closeModal) {
+                        const modal = document.getElementById('alertModal');
+                        if (modal) {
+                            modal.classList.remove('show');
+                        }
+                        currentAlertReminder = null;
+                    }
                 }
             });
         }
