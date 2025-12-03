@@ -1637,6 +1637,18 @@
             console.log('📋 Lembretes no App:', reminders);
             console.log('💾 Lembretes no localStorage:', JSON.parse(localStorage.getItem('reminders') || '[]'));
             
+            // Mostrar próximos horários
+            reminders.forEach(r => {
+                if (!r.completed) {
+                    if (r.nextExecutions && r.nextExecutions.length > 0) {
+                        const nextExec = r.nextExecutions[0];
+                        console.log(`📅 APP [${r.title}] Próximo: ${new Date(nextExec.time).toLocaleString()} | Notificado: ${nextExec.notified}`);
+                    } else if (r.time) {
+                        console.log(`📅 APP [${r.title}] Próximo: ${new Date(r.time).toLocaleString()} | Notificado: ${r.notified}`);
+                    }
+                }
+            });
+            
             if (swRegistration && swRegistration.active) {
                 // Pedir ao SW para mostrar seus lembretes
                 const channel = new MessageChannel();
@@ -1644,9 +1656,32 @@
                     if (event.data.type === 'DEBUG_RESPONSE') {
                         console.log('🔧 Lembretes no Service Worker:', event.data.reminders);
                         
-                        alert('Debug completo! Veja o console (F12) para detalhes.\n\n' +
-                              'App: ' + reminders.length + ' lembretes\n' +
-                              'SW: ' + event.data.reminders.length + ' lembretes');
+                        let msg = 'Debug completo! Veja o console (F12) para detalhes.\n\n';
+                        msg += 'App: ' + reminders.length + ' lembretes\n';
+                        msg += 'SW: ' + event.data.reminders.length + ' lembretes\n\n';
+                        
+                        // Comparar horários
+                        const appReminder = reminders[0];
+                        const swReminder = event.data.reminders[0];
+                        
+                        if (appReminder && swReminder) {
+                            const appTime = appReminder.nextExecutions ? 
+                                new Date(appReminder.nextExecutions[0].time) : 
+                                new Date(appReminder.time);
+                            const swTime = swReminder.nextExecutions ? 
+                                new Date(swReminder.nextExecutions[0].time) : 
+                                new Date(swReminder.time);
+                            
+                            msg += 'Próximo horário:\n';
+                            msg += 'App: ' + appTime.toLocaleTimeString() + '\n';
+                            msg += 'SW: ' + swTime.toLocaleTimeString();
+                            
+                            if (appTime.getTime() !== swTime.getTime()) {
+                                msg += '\n\n⚠️ HORÁRIOS DIFERENTES!';
+                            }
+                        }
+                        
+                        alert(msg);
                     }
                 };
                 
