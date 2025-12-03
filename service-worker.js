@@ -84,3 +84,49 @@ self.addEventListener('sync', event => {
     event.waitUntil(checkRemindersInBackground());
   }
 });
+
+// Agendar verificação periódica em segundo plano
+self.addEventListener('periodicsync', event => {
+  if (event.tag === 'check-reminders-periodic') {
+    event.waitUntil(checkRemindersInBackground());
+  }
+});
+
+// Alarme para verificar lembretes
+let alarmTimeout;
+
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SCHEDULE_ALARM') {
+    const { reminderId, timeUntilReminder } = event.data;
+    
+    // Limpar alarme anterior
+    if (alarmTimeout) {
+      clearTimeout(alarmTimeout);
+    }
+    
+    // Agendar novo alarme
+    alarmTimeout = setTimeout(() => {
+      // Enviar mensagem para o app verificar lembretes
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'CHECK_NOW'
+          });
+        });
+      });
+      
+      // Se não houver clientes abertos, mostrar notificação diretamente
+      if (clients.length === 0) {
+        self.registration.showNotification('⏰ Lembrete', {
+          body: 'Você tem um lembrete pendente!',
+          icon: 'icon-192.png',
+          badge: 'icon-192.png',
+          vibrate: [200, 100, 200, 100, 200, 100, 200],
+          requireInteraction: true,
+          tag: 'reminder-' + reminderId,
+          data: { reminderId: reminderId }
+        });
+      }
+    }, timeUntilReminder);
+  }
+});
