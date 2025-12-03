@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lembretes-v3';
+const CACHE_NAME = 'lembretes-v2';
 const urlsToCache = [
   './',
   './index.html'
@@ -7,117 +7,6 @@ const urlsToCache = [
 let storedReminders = [];
 let checkInterval = null;
 let wakeLock = null;
-
-// Cache local para lembretes (IndexedDB seria ideal, mas vamos usar variável global)
-const DB_NAME = 'reminders-db';
-const DB_VERSION = 1;
-let db = null;
-
-// Inicializar IndexedDB para persistir lembretes no SW
-async function initDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => {
-      db = request.result;
-      console.log('✅ SW: IndexedDB inicializado');
-      resolve(db);
-    };
-    
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('reminders')) {
-        db.createObjectStore('reminders', { keyPath: 'id' });
-        console.log('✅ SW: ObjectStore criado');
-      }
-    };
-  });
-}
-
-// Carregar lembretes do IndexedDB
-async function loadRemindersFromDB() {
-  if (!db) await initDB();
-  
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['reminders'], 'readonly');
-    const store = transaction.objectStore('reminders');
-    const request = store.getAll();
-    
-    request.onsuccess = () => {
-      storedReminders = request.result || [];
-      console.log('📥 SW: Lembretes carregados do DB:', storedReminders.length);
-      
-      if (storedReminders.length > 0) {
-        console.log('📋 SW: IDs dos lembretes:', storedReminders.map(r => `${r.id} (${r.title})`).join(', '));
-      }
-      
-      resolve(storedReminders);
-    };
-    
-    request.onerror = () => reject(request.error);
-  });
-}
-
-// Salvar lembretes no IndexedDB E localStorage
-async function saveRemindersToDB(reminders) {
-  if (!db) await initDB();
-  
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(['reminders'], 'readwrite');
-    const store = transaction.objectStore('reminders');
-    
-    // Limpar store
-    store.clear();
-    
-    // Adicionar todos os lembretes
-    reminders.forEach(reminder => {
-      store.put(reminder);
-    });
-    
-    transaction.oncomplete = async () => {
-      console.log('💾 SW: Lembretes salvos no DB');
-      console.log('📊 SW: Quantidade salva:', reminders.length);
-      
-      // Mostrar próximos horários
-      reminders.forEach(r => {
-        if (!r.completed) {
-          if (r.nextExecutions && r.nextExecutions.length > 0) {
-            const nextExec = r.nextExecutions[0];
-            console.log(`📅 [${r.title}] Próximo: ${new Date(nextExec.time).toLocaleString()}`);
-          } else if (r.time) {
-            console.log(`📅 [${r.title}] Próximo: ${new Date(r.time).toLocaleString()}`);
-          }
-        }
-      });
-      
-      // TAMBÉM salvar no localStorage para sincronizar com o app
-      try {
-        // Buscar todos os clients (abas abertas do app)
-        const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
-        
-        if (clients.length > 0) {
-          // Se há clients abertos, pedir para eles salvarem no localStorage
-          clients.forEach(client => {
-            client.postMessage({
-              type: 'SYNC_REMINDERS_TO_LOCALSTORAGE',
-              reminders: reminders
-            });
-          });
-          console.log('📤 SW: Pedido de sincronização enviado aos clients:', clients.length);
-        } else {
-          console.log('⚠️ SW: Nenhum client aberto para sincronizar');
-        }
-      } catch (err) {
-        console.log('⚠️ SW: Erro ao sincronizar com clients:', err);
-      }
-      
-      resolve();
-    };
-    
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
 
 // Instalar Service Worker
 self.addEventListener('install', event => {
@@ -133,23 +22,19 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   console.log('✅ SW: Ativando...');
   event.waitUntil(
-    Promise.all([
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            if (cacheName !== CACHE_NAME) {
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }),
-      initDB().then(() => loadRemindersFromDB())
-    ]).then(() => {
-      self.clients.claim();
-      // Iniciar verificação periódica imediatamente
-      startPeriodicCheck();
-    })
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => self.clients.claim())
   );
+  
+  // Iniciar verificação periódica imediatamente
+  startPeriodicCheck();
 });
 
 // Interceptar requisições
@@ -168,40 +53,16 @@ self.addEventListener('message', event => {
     storedReminders = event.data.reminders || [];
     console.log('📝 SW: Lembretes atualizados:', storedReminders.length);
     
-    // Salvar no IndexedDB para persistir
-    saveRemindersToDB(storedReminders).then(() => {
-      // Reiniciar verificação com novos lembretes
-      startPeriodicCheck();
-    });
+    // Reiniciar verificação com novos lembretes
+    startPeriodicCheck();
     
   } else if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     // Mostrar notificação imediatamente
     showNotification(event.data.reminder);
     
-  } else if (event.data && event.data.type === 'CLOSE_NOTIFICATION') {
-    // Fechar notificação específica
-    const reminderId = event.data.reminderId;
-    const tag = 'reminder-' + reminderId;
-    
-    self.registration.getNotifications({ tag: tag }).then(notifications => {
-      notifications.forEach(notification => {
-        console.log('🚫 SW: Fechando notificação:', tag);
-        notification.close();
-      });
-    });
-    
   } else if (event.data && event.data.type === 'KEEP_ALIVE') {
     // Responder ao ping de keep-alive
     event.ports[0].postMessage({ type: 'ALIVE' });
-    
-  } else if (event.data && event.data.type === 'DEBUG_REQUEST') {
-    // Responder com lembretes para debug
-    loadRemindersFromDB().then(() => {
-      event.ports[0].postMessage({ 
-        type: 'DEBUG_RESPONSE',
-        reminders: storedReminders
-      });
-    });
   }
 });
 
@@ -212,26 +73,15 @@ function startPeriodicCheck() {
     clearInterval(checkInterval);
   }
   
-  // Carregar lembretes do DB antes de iniciar
-  loadRemindersFromDB().then(() => {
-    console.log('⏰ SW: Lembretes carregados, iniciando verificação periódica');
-    console.log('📋 SW: Total de lembretes ativos:', storedReminders.filter(r => !r.completed).length);
-    
-    // Verificar a cada 5 segundos (ainda mais frequente)
-    checkInterval = setInterval(() => {
-      checkRemindersInBackground();
-    }, 5000);
-    
-    // Verificar imediatamente
+  // Verificar a cada 10 segundos (mais frequente)
+  checkInterval = setInterval(() => {
     checkRemindersInBackground();
-    
-    // Manter uma verificação extra a cada 30 segundos como backup
-    setInterval(() => {
-      checkRemindersInBackground();
-    }, 30000);
-    
-    console.log('⏰ SW: Verificação periódica iniciada (5s + backup 30s)');
-  });
+  }, 10000);
+  
+  // Verificar imediatamente
+  checkRemindersInBackground();
+  
+  console.log('⏰ SW: Verificação periódica iniciada (10s)');
 }
 
 // Verificar lembretes em segundo plano
@@ -241,13 +91,6 @@ function checkRemindersInBackground() {
   }
   
   const now = new Date();
-  const nowStr = now.toLocaleTimeString();
-  
-  // Log a cada minuto para saber que está rodando
-  const seconds = now.getSeconds();
-  if (seconds === 0) {
-    console.log('⏰ SW: Verificando lembretes...', nowStr, '| Total:', storedReminders.length);
-  }
   
   storedReminders.forEach(reminder => {
     if (reminder.completed) return;
@@ -255,42 +98,22 @@ function checkRemindersInBackground() {
     // Compatibilidade retroativa
     if (!reminder.nextExecutions && reminder.time) {
       const reminderTime = new Date(reminder.time);
-      
-      // Log de debug
-      if (seconds === 0) {
-        console.log(`📋 [${reminder.title}] Próximo em: ${reminderTime.toLocaleTimeString()} | Notificado: ${reminder.notified}`);
-      }
-      
       if (!reminder.notified && reminderTime <= now) {
-        console.log('🔔 SW: Lembrete vencido (antigo):', reminder.title, '| Hora:', reminderTime.toLocaleTimeString());
-        reminder.notified = true;
+        console.log('🔔 SW: Lembrete vencido (antigo):', reminder.title);
         showNotification(reminder);
         notifyApp(reminder.id);
-        
-        // Salvar estado de notificado
-        saveRemindersToDB(storedReminders);
       }
       return;
     }
     
     // Novo sistema com múltiplos horários
     if (reminder.nextExecutions) {
-      reminder.nextExecutions.forEach((execution, idx) => {
+      reminder.nextExecutions.forEach(execution => {
         const execTime = new Date(execution.time);
-        
-        // Log de debug
-        if (seconds === 0) {
-          console.log(`📋 [${reminder.title}] Execução ${idx}: ${execTime.toLocaleTimeString()} | Notificado: ${execution.notified}`);
-        }
-        
         if (!execution.notified && execTime <= now) {
-          console.log('🔔 SW: Lembrete vencido (novo):', reminder.title, '| Hora:', execTime.toLocaleTimeString());
-          execution.notified = true;
+          console.log('🔔 SW: Lembrete vencido (novo):', reminder.title);
           showNotification(reminder);
           notifyApp(reminder.id);
-          
-          // Salvar estado de notificado
-          saveRemindersToDB(storedReminders);
         }
       });
     }
@@ -301,8 +124,8 @@ function checkRemindersInBackground() {
 function showNotification(reminder) {
   const options = {
     body: reminder.description || 'Hora do seu lembrete!',
-    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="75" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
-    badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="75" font-size="60" text-anchor="middle" fill="white"%3E🔔%3C/text%3E%3C/svg%3E',
+    icon: '/icon-192.png',
+    badge: '/icon-72.png',
     vibrate: [300, 100, 300, 100, 300, 100, 300],
     requireInteraction: true, // CRÍTICO: mantém a notificação até o usuário interagir
     tag: 'reminder-' + reminder.id,
@@ -313,33 +136,18 @@ function showNotification(reminder) {
       timestamp: Date.now()
     },
     actions: [
-      { action: 'complete', title: '✓ Concluir' },
-      { action: 'snooze', title: '⏰ +5min' }
+      { action: 'complete', title: '✓ Concluir', icon: '/icon-72.png' },
+      { action: 'snooze', title: '⏰ +5min', icon: '/icon-72.png' }
     ]
   };
   
-  // Fechar notificação anterior do mesmo lembrete antes de mostrar nova
-  self.registration.getNotifications({ tag: 'reminder-' + reminder.id }).then(notifications => {
-    notifications.forEach(n => n.close());
-  }).then(() => {
-    // Mostrar nova notificação
-    return self.registration.showNotification('⏰ ' + reminder.title, options);
-  }).then(() => {
-    console.log('✅ SW: Notificação exibida:', reminder.title);
-    
-    // Agendar re-notificação após 3 minutos se não interagir (backup)
-    setTimeout(() => {
-      self.registration.getNotifications({ tag: 'reminder-' + reminder.id }).then(notifications => {
-        if (notifications.length > 0) {
-          // Notificação ainda está lá, re-notificar
-          self.registration.showNotification('⏰ LEMBRETE: ' + reminder.title, options);
-          console.log('🔁 SW: Re-notificação enviada:', reminder.title);
-        }
-      });
-    }, 3 * 60 * 1000);
-  }).catch(err => {
-    console.error('❌ SW: Erro ao exibir notificação:', err);
-  });
+  self.registration.showNotification('⏰ ' + reminder.title, options)
+    .then(() => {
+      console.log('✅ SW: Notificação exibida:', reminder.title);
+    })
+    .catch(err => {
+      console.error('❌ SW: Erro ao exibir notificação:', err);
+    });
 }
 
 // Notificar o app sobre lembrete disparado
@@ -354,7 +162,7 @@ function notifyApp(reminderId) {
   });
 }
 
-// Tratar cliques na notificação - PROCESSAR DIRETO NO SW
+// Tratar cliques na notificação
 self.addEventListener('notificationclick', event => {
   console.log('👆 SW: Clique na notificação:', event.action);
   
@@ -362,45 +170,64 @@ self.addEventListener('notificationclick', event => {
   event.notification.close();
   
   if (event.action === 'snooze' && reminderId) {
-    console.log('⏰ SW: Adiando lembrete DIRETO no SW:', reminderId);
+    console.log('⏰ SW: Adiando lembrete:', reminderId);
     
-    // PROCESSAR ADIAR DIRETO NO SERVICE WORKER (não depende do app)
+    // Enviar mensagem para o app adiar E fechar modal
     event.waitUntil(
-      snoozeReminderInSW(reminderId, 5).then(() => {
-        // Notificar o app SE estiver aberto
-        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-          if (clientList.length > 0) {
-            clientList.forEach(client => {
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        if (clientList.length > 0) {
+          // App está aberto - enviar mensagem
+          clientList.forEach(client => {
+            client.postMessage({
+              type: 'SNOOZE_REMINDER',
+              reminderId: reminderId,
+              minutes: 5,
+              closeModal: true // IMPORTANTE: fechar modal quando vier da notificação
+            });
+          });
+        } else {
+          // App está fechado - abrir e enviar mensagem
+          return self.clients.openWindow('/').then(client => {
+            setTimeout(() => {
               client.postMessage({
                 type: 'SNOOZE_REMINDER',
                 reminderId: reminderId,
                 minutes: 5,
                 closeModal: true
               });
-            });
-          }
-        });
+            }, 1000);
+          });
+        }
       })
     );
     
   } else if (event.action === 'complete' && reminderId) {
-    console.log('✅ SW: Concluindo lembrete DIRETO no SW:', reminderId);
+    console.log('✅ SW: Concluindo lembrete:', reminderId);
     
-    // PROCESSAR CONCLUSÃO DIRETO NO SERVICE WORKER
+    // Enviar mensagem para o app concluir E fechar modal
     event.waitUntil(
-      completeReminderInSW(reminderId).then(() => {
-        // Notificar o app SE estiver aberto
-        self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-          if (clientList.length > 0) {
-            clientList.forEach(client => {
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        if (clientList.length > 0) {
+          // App está aberto - enviar mensagem
+          clientList.forEach(client => {
+            client.postMessage({
+              type: 'COMPLETE_REMINDER',
+              reminderId: reminderId,
+              closeModal: true // IMPORTANTE: fechar modal quando vier da notificação
+            });
+          });
+        } else {
+          // App está fechado - abrir e enviar mensagem
+          return self.clients.openWindow('/').then(client => {
+            setTimeout(() => {
               client.postMessage({
                 type: 'COMPLETE_REMINDER',
                 reminderId: reminderId,
                 closeModal: true
               });
-            });
-          }
-        });
+            }, 1000);
+          });
+        }
       })
     );
     
@@ -444,282 +271,9 @@ self.addEventListener('push', event => {
   event.waitUntil(checkRemindersInBackground());
 });
 
-// Adiar lembrete DIRETO no Service Worker (sem depender do app)
-async function snoozeReminderInSW(reminderId, minutes) {
-  console.log('⏰ SW: Processando adiar:', reminderId, minutes, 'min');
-  
-  // Carregar lembretes do DB
-  await loadRemindersFromDB();
-  
-  const reminder = storedReminders.find(r => r.id === reminderId);
-  if (!reminder) {
-    console.log('❌ SW: Lembrete não encontrado:', reminderId);
-    console.log('📋 SW: Lembretes disponíveis:', storedReminders.map(r => r.id));
-    return;
-  }
-  
-  console.log('📝 SW: Lembrete ANTES de adiar:', JSON.stringify(reminder, null, 2));
-  
-  // Adiar todas as execuções pendentes
-  if (!reminder.nextExecutions && reminder.time) {
-    // Formato antigo
-    const oldTime = new Date(reminder.time);
-    const newTime = new Date(reminder.time);
-    newTime.setMinutes(newTime.getMinutes() + minutes);
-    reminder.time = newTime;
-    reminder.notified = false;
-    
-    console.log('⏰ SW: Formato antigo - De', oldTime.toLocaleTimeString(), 'para', newTime.toLocaleTimeString());
-  } else if (reminder.nextExecutions) {
-    // Novo formato
-    reminder.nextExecutions = reminder.nextExecutions.map(exec => {
-      const execTime = new Date(exec.time);
-      if (execTime <= new Date()) {
-        const oldTime = new Date(exec.time);
-        const newTime = new Date(exec.time);
-        newTime.setMinutes(newTime.getMinutes() + minutes);
-        
-        console.log('⏰ SW: Execução adiada - De', oldTime.toLocaleTimeString(), 'para', newTime.toLocaleTimeString());
-        
-        return {
-          ...exec,
-          time: newTime,
-          notified: false
-        };
-      }
-      return exec;
-    });
-  }
-  
-  console.log('📝 SW: Lembrete DEPOIS de adiar:', JSON.stringify(reminder, null, 2));
-  
-  // Atualizar o array global IMEDIATAMENTE
-  const index = storedReminders.findIndex(r => r.id === reminderId);
-  if (index !== -1) {
-    storedReminders[index] = reminder;
-    console.log('✅ SW: Array global atualizado');
-  }
-  
-  // Salvar no DB (isso também sincroniza com localStorage via mensagem)
-  await saveRemindersToDB(storedReminders);
-  
-  console.log('✅ SW: Lembrete adiado e salvo no DB + enviado para sincronização');
-  
-  // Recarregar lembretes do DB para garantir
-  await loadRemindersFromDB();
-  
-  // Reiniciar verificação periódica com dados atualizados
-  if (checkInterval) {
-    clearInterval(checkInterval);
-  }
-  startPeriodicCheck();
-  
-  // Fazer uma verificação IMEDIATA
-  setTimeout(() => {
-    console.log('🔄 SW: Verificação imediata após adiar');
-    checkRemindersInBackground();
-  }, 1000);
-}
-
-// Concluir lembrete DIRETO no Service Worker
-async function completeReminderInSW(reminderId) {
-  console.log('✅ SW: Processando conclusão:', reminderId);
-  
-  // Carregar lembretes do DB
-  await loadRemindersFromDB();
-  
-  const reminder = storedReminders.find(r => r.id === reminderId);
-  if (!reminder) {
-    console.log('❌ SW: Lembrete não encontrado:', reminderId);
-    return;
-  }
-  
-  // Verificar se tem recorrência
-  if (!reminder.schedules || !reminder.nextExecutions) {
-    // Formato antigo ou sem recorrência - apenas marcar como concluído
-    reminder.completed = true;
-  } else {
-    // Novo sistema: Recalcular todas as próximas execuções
-    let hasMoreExecutions = false;
-    
-    reminder.nextExecutions = reminder.schedules.map((schedule, index) => {
-      const currentExec = reminder.nextExecutions.find(e => e.scheduleIndex === index);
-      
-      // Se já passou, calcular próxima
-      if (currentExec && new Date(currentExec.time) <= new Date()) {
-        const nextTime = calculateNextRecurrenceForSchedule(schedule, new Date(currentExec.time));
-        
-        if (nextTime) {
-          hasMoreExecutions = true;
-          return {
-            scheduleIndex: index,
-            time: nextTime,
-            notified: false
-          };
-        }
-      } else if (currentExec) {
-        // Ainda não passou, manter
-        hasMoreExecutions = true;
-        return currentExec;
-      }
-      
-      return null;
-    }).filter(e => e !== null);
-    
-    if (!hasMoreExecutions) {
-      reminder.completed = true;
-    }
-  }
-  
-  console.log('✅ SW: Lembrete processado');
-  
-  // Atualizar o array global IMEDIATAMENTE
-  const index = storedReminders.findIndex(r => r.id === reminderId);
-  if (index !== -1) {
-    storedReminders[index] = reminder;
-    console.log('✅ SW: Array global atualizado');
-  }
-  
-  // Salvar no DB
-  await saveRemindersToDB(storedReminders);
-  
-  console.log('✅ SW: Lembrete processado e salvo no DB');
-  
-  // Recarregar lembretes do DB para garantir
-  await loadRemindersFromDB();
-  
-  // Reiniciar verificação periódica com dados atualizados
-  if (checkInterval) {
-    clearInterval(checkInterval);
-  }
-  startPeriodicCheck();
-}
-
-// Calcular próxima recorrência (copiado do index.html)
-function calculateNextRecurrenceForSchedule(schedule, currentTime) {
-  if (schedule.scheduleType === 'specific') {
-    if (schedule.recurrenceType === 'none') return null;
-    
-    const nextTime = getNextRecurrence(currentTime, schedule.recurrenceType);
-    if (schedule.recurrenceEnd && nextTime > new Date(schedule.recurrenceEnd)) {
-      return null;
-    }
-    return nextTime;
-    
-  } else if (schedule.scheduleType === 'interval') {
-    const nextTime = new Date(currentTime);
-    
-    if (schedule.intervalUnit === 'minutes') {
-      nextTime.setMinutes(nextTime.getMinutes() + schedule.intervalValue);
-    } else if (schedule.intervalUnit === 'hours') {
-      nextTime.setHours(nextTime.getHours() + schedule.intervalValue);
-    } else if (schedule.intervalUnit === 'days') {
-      nextTime.setDate(nextTime.getDate() + schedule.intervalValue);
-    }
-    
-    if (schedule.intervalEnd && nextTime > new Date(schedule.intervalEnd)) {
-      return null;
-    }
-    return nextTime;
-    
-  } else if (schedule.scheduleType === 'complex') {
-    return calculateNextComplexTime(schedule);
-  }
-  
-  return null;
-}
-
-// Calcular próxima recorrência simples
-function getNextRecurrence(currentDate, type) {
-  const next = new Date(currentDate);
-  
-  switch(type) {
-    case 'daily':
-      next.setDate(next.getDate() + 1);
-      break;
-    case 'weekly':
-      next.setDate(next.getDate() + 7);
-      break;
-    case 'monthly':
-      next.setMonth(next.getMonth() + 1);
-      break;
-  }
-  
-  return next;
-}
-
-// Calcular próximo horário complexo
-function calculateNextComplexTime(schedule) {
-  const now = new Date();
-  
-  if (schedule.type === 'time') {
-    return new Date(schedule.time);
-  } else if (schedule.type === 'daily') {
-    const [hours, minutes] = schedule.time.split(':');
-    const next = new Date();
-    next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
-    }
-    return next;
-  } else if (schedule.type === 'weekly') {
-    const [hours, minutes] = schedule.time.split(':');
-    const currentDay = now.getDay();
-    
-    let daysUntilNext = 7;
-    for (let day of schedule.weekdays.sort()) {
-      const diff = day - currentDay;
-      if (diff > 0 || (diff === 0 && now.getHours() * 60 + now.getMinutes() < parseInt(hours) * 60 + parseInt(minutes))) {
-        daysUntilNext = diff > 0 ? diff : 0;
-        break;
-      }
-    }
-    
-    if (daysUntilNext === 7) {
-      daysUntilNext = 7 - currentDay + schedule.weekdays[0];
-    }
-    
-    const next = new Date(now);
-    next.setDate(next.getDate() + daysUntilNext);
-    next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    return next;
-  } else if (schedule.type === 'monthly') {
-    const [hours, minutes] = schedule.time.split(':');
-    const next = new Date();
-    next.setDate(schedule.day);
-    next.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    
-    if (next <= now) {
-      next.setMonth(next.getMonth() + 1);
-    }
-    return next;
-  }
-  
-  return new Date();
-}
-
-// Manter o SW vivo com múltiplas estratégias
+// Manter o SW vivo com fetch fake periódico
 setInterval(() => {
   fetch('/?keepalive=' + Date.now()).catch(() => {});
 }, 25000); // A cada 25 segundos
 
-// Estratégia adicional: auto-mensagem a cada 15 segundos
-setInterval(() => {
-  self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
-    if (clients.length > 0) {
-      checkRemindersInBackground();
-    }
-  });
-}, 15000);
-
-// Estratégia 3: Re-registrar periodicsync a cada 5 minutos
-setInterval(async () => {
-  try {
-    await self.registration.sync.register('check-reminders');
-  } catch (err) {
-    console.log('⚠️ Sync re-register falhou:', err);
-  }
-}, 5 * 60 * 1000);
-
-console.log('🚀 SW: Service Worker carregado com estratégias de sobrevivência');
+console.log('🚀 SW: Service Worker carregado');
