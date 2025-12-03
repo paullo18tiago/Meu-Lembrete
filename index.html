@@ -533,9 +533,11 @@
             <button id="installButton" class="btn" style="display: none; max-width: 300px; margin: 15px auto 0;">
                 📲 Instalar App
             </button>
+            <!-- BOTÃO DE TESTE - DESCOMENTE PARA ATIVAR
             <button onclick="testarNotificacao()" class="btn-secondary" style="max-width: 300px; margin: 10px auto 0;">
                 🔔 Testar Notificação
             </button>
+            -->
         </div>
 
         <div class="tabs">
@@ -1052,6 +1054,9 @@
             const reminder = reminders.find(r => r.id === id);
             if (!reminder) return;
             
+            // Fechar notificação da barra do Android
+            closeSystemNotification(id);
+            
             // Fechar modal se estiver aberto
             if (currentAlertReminder && currentAlertReminder.id === id) {
                 document.getElementById('alertModal').classList.remove('show');
@@ -1519,10 +1524,24 @@
         // Dispensar alerta (adiar 5 minutos)
         function dismissAlert() {
             if (currentAlertReminder) {
+                // Fechar notificação da barra do Android
+                closeSystemNotification(currentAlertReminder.id);
+                
                 snoozeReminderById(currentAlertReminder.id, 5, true);
             }
             document.getElementById('alertModal').classList.remove('show');
             currentAlertReminder = null;
+        }
+        
+        // Fechar notificação do sistema (barra de notificações do Android)
+        function closeSystemNotification(reminderId) {
+            if (swRegistration && swRegistration.active) {
+                swRegistration.active.postMessage({
+                    type: 'CLOSE_NOTIFICATION',
+                    reminderId: reminderId
+                });
+                console.log('🚫 Solicitado fechamento de notificação:', reminderId);
+            }
         }
         
         // Concluir lembrete a partir da notificação do sistema
@@ -1558,6 +1577,9 @@
                 console.log('❌ Lembrete não encontrado:', reminderId);
                 return;
             }
+            
+            // Fechar notificação da barra do Android
+            closeSystemNotification(reminderId);
             
             // Compatibilidade retroativa
             if (!reminder.nextExecutions && reminder.time) {
@@ -1601,13 +1623,17 @@
         // Concluir a partir do alerta
         function completeFromAlert() {
             if (currentAlertReminder) {
+                // Fechar notificação da barra do Android
+                closeSystemNotification(currentAlertReminder.id);
+                
                 completeReminder(currentAlertReminder.id);
             }
             document.getElementById('alertModal').classList.remove('show');
             currentAlertReminder = null;
         }
 
-// Testar notificação
+// FUNÇÃO DE TESTE - DESCOMENTE PARA ATIVAR
+        /*
         function testarNotificacao() {
             console.log('🧪 Testando notificação...');
             
@@ -1645,6 +1671,7 @@
                 alert('❌ Seu navegador não suporta notificações.');
             }
         }
+        */
 
         // Solicitar permissão de notificação
         function requestNotificationPermission() {
