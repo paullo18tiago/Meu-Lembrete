@@ -533,11 +533,10 @@
             <button id="installButton" class="btn" style="display: none; max-width: 300px; margin: 15px auto 0;">
                 📲 Instalar App
             </button>
-            <!-- BOTÃO DE TESTE - DESCOMENTE PARA ATIVAR
-            <button onclick="testarNotificacao()" class="btn-secondary" style="max-width: 300px; margin: 10px auto 0;">
-                🔔 Testar Notificação
+            <!-- BOTÃO DE DEBUG - ATIVADO -->
+            <button onclick="debugReminders()" class="btn-secondary" style="max-width: 300px; margin: 10px auto 0;">
+                🐛 Debug Lembretes
             </button>
-            -->
         </div>
 
         <div class="tabs">
@@ -1632,6 +1631,34 @@
             currentAlertReminder = null;
         }
 
+// Função de debug
+        function debugReminders() {
+            console.log('🐛 ===== DEBUG DE LEMBRETES =====');
+            console.log('📋 Lembretes no App:', reminders);
+            console.log('💾 Lembretes no localStorage:', JSON.parse(localStorage.getItem('reminders') || '[]'));
+            
+            if (swRegistration && swRegistration.active) {
+                // Pedir ao SW para mostrar seus lembretes
+                const channel = new MessageChannel();
+                channel.port1.onmessage = (event) => {
+                    if (event.data.type === 'DEBUG_RESPONSE') {
+                        console.log('🔧 Lembretes no Service Worker:', event.data.reminders);
+                        
+                        alert('Debug completo! Veja o console (F12) para detalhes.\n\n' +
+                              'App: ' + reminders.length + ' lembretes\n' +
+                              'SW: ' + event.data.reminders.length + ' lembretes');
+                    }
+                };
+                
+                swRegistration.active.postMessage(
+                    { type: 'DEBUG_REQUEST' },
+                    [channel.port2]
+                );
+            } else {
+                alert('Service Worker não está ativo!');
+            }
+        }
+
 // FUNÇÃO DE TESTE - DESCOMENTE PARA ATIVAR
         /*
         function testarNotificacao() {
@@ -1704,32 +1731,60 @@
                 }
                 
                 // Processar mensagens do SW
-                if (event.data.type === 'SNOOZE_REMINDER') {
+                if (event.data.type === 'SYNC_REMINDERS_TO_LOCALSTORAGE') {
+                    console.log('🔄 [GLOBAL] Sincronizando lembretes do SW para localStorage');
+                    
+                    // Receber lembretes atualizados do SW e salvar no localStorage
+                    reminders = event.data.reminders.map(r => {
+                        const reminder = {...r};
+                        
+                        // Converter datas nos schedules
+                        if (reminder.schedules) {
+                            reminder.schedules = reminder.schedules.map(s => ({
+                                ...s,
+                                time: s.time ? (typeof s.time === 'string' && s.time.includes(':') && !s.time.includes('T') ? s.time : new Date(s.time)) : null,
+                                recurrenceEnd: s.recurrenceEnd ? new Date(s.recurrenceEnd) : null,
+                                intervalEnd: s.intervalEnd ? new Date(s.intervalEnd) : null
+                            }));
+                        }
+                        
+                        // Converter datas nas execuções
+                        if (reminder.nextExecutions) {
+                            reminder.nextExecutions = reminder.nextExecutions.map(e => ({
+                                ...e,
+                                time: new Date(e.time)
+                            }));
+                        }
+                        
+                        return reminder;
+                    });
+                    
+                    // Salvar no localStorage
+                    localStorage.setItem('reminders', JSON.stringify(reminders));
+                    
+                    // Atualizar UI
+                    displayReminders();
+                    
+                    console.log('✅ [GLOBAL] Lembretes sincronizados com sucesso');
+                    
+                } else if (event.data.type === 'SNOOZE_REMINDER') {
                     console.log('⏰ [GLOBAL] SW processou adiar:', event.data.reminderId);
                     
-                    // SW já processou, apenas atualizar UI
-                    const reminder = reminders.find(r => r.id === event.data.reminderId);
-                    if (reminder) {
-                        // Recarregar do localStorage (que foi atualizado pelo SW via IndexedDB)
-                        loadReminders();
-                        
-                        // Fechar modal se solicitado
-                        if (event.data.closeModal) {
-                            const modal = document.getElementById('alertModal');
-                            if (modal) {
-                                modal.classList.remove('show');
-                            }
-                            currentAlertReminder = null;
+                    // SW já sincronizou via SYNC_REMINDERS_TO_LOCALSTORAGE
+                    // Apenas fechar modal se solicitado
+                    if (event.data.closeModal) {
+                        const modal = document.getElementById('alertModal');
+                        if (modal) {
+                            modal.classList.remove('show');
                         }
+                        currentAlertReminder = null;
                     }
                     
                 } else if (event.data.type === 'COMPLETE_REMINDER') {
                     console.log('✅ [GLOBAL] SW processou conclusão:', event.data.reminderId);
                     
-                    // SW já processou, apenas atualizar UI
-                    loadReminders();
-                    
-                    // Fechar modal se solicitado
+                    // SW já sincronizou via SYNC_REMINDERS_TO_LOCALSTORAGE
+                    // Apenas fechar modal se solicitado
                     if (event.data.closeModal) {
                         const modal = document.getElementById('alertModal');
                         if (modal) {
