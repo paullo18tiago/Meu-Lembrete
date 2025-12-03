@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meus Lembretes</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Lembretes">
+    <meta name="theme-color" content="#667eea">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        input[type="text"],
+        input[type="datetime-local"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .reminder-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+        }
+
+        .reminder-item.overdue {
+            border-left-color: #e74c3c;
+            background: #fee;
+        }
+
+        .reminder-content {
+            flex: 1;
+        }
+
+        .reminder-title {
+            font-weight: 600;
+            font-size: 1.1em;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .reminder-time {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 5px;
+        }
+
+        .reminder-description {
+            color: #888;
+            font-size: 0.9em;
+        }
+
+        .reminder-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 14px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-delete {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #c0392b;
+        }
+
+        .btn-complete {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-complete:hover {
+            background: #229954;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .recurrence-options {
+            display: none;
+            margin-top: 10px;
+        }
+
+        .recurrence-options.show {
+            display: block;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .badge-recurring {
+            background: #3498db;
+            color: white;
+        }
+
+        .notification-badge {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #27ae60;
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .alert-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .alert-modal.show {
+            display: flex;
+        }
+
+        .alert-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            animation: bounceIn 0.5s ease;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+
+        .alert-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: ring 1s ease infinite;
+        }
+
+        .alert-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .alert-description {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .alert-time {
+            font-size: 18px;
+            color: #999;
+            margin-bottom: 30px;
+        }
+
+        .alert-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .alert-btn {
+            padding: 15px 30px;
+            border-radius: 10px;
+            border: none;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .alert-btn-dismiss {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .alert-btn-dismiss:hover {
+            background: #7f8c8d;
+        }
+
+        .alert-btn-complete {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .alert-btn-complete:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes bounceIn {
+            0% {
+                transform: scale(0.3);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes ring {
+            0%, 100% { transform: rotate(0deg); }
+            10%, 30% { transform: rotate(-10deg); }
+            20%, 40% { transform: rotate(10deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📝 Meus Lembretes</h1>
+            <p>Organize sua vida sem internet</p>
+            <button id="installButton" class="btn" style="display: none; max-width: 300px; margin: 15px auto 0;">
+                📲 Instalar App
+            </button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('all')">Todos</button>
+            <button class="tab" onclick="showTab('upcoming')">Próximos</button>
+            <button class="tab" onclick="showTab('overdue')">Atrasados</button>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 20px;">➕ Novo Lembrete</h2>
+            
+            <div class="input-group">
+                <label>Título do Lembrete</label>
+                <input type="text" id="reminderTitle" placeholder="Ex: Ligar para o médico">
+            </div>
+
+            <div class="input-group">
+                <label>Data e Hora</label>
+                <input type="datetime-local" id="reminderTime">
+            </div>
+
+            <div class="input-group">
+                <label>Repetir?</label>
+                <select id="recurrenceType" onchange="toggleRecurrenceOptions()">
+                    <option value="none">Não repetir</option>
+                    <option value="daily">Diariamente</option>
+                    <option value="weekly">Semanalmente</option>
+                    <option value="monthly">Mensalmente</option>
+                </select>
+            </div>
+
+            <div class="recurrence-options" id="recurrenceOptions">
+                <div class="input-group">
+                    <label>Repetir até (opcional)</label>
+                    <input type="date" id="recurrenceEnd">
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Descrição (opcional)</label>
+                <textarea id="reminderDescription" placeholder="Adicione detalhes sobre o lembrete..."></textarea>
+            </div>
+
+            <button class="btn" onclick="addReminder()">Criar Lembrete</button>
+        </div>
+
+        <div class="card">
+            <h2 style="margin-bottom: 20px;">📋 Lista de Lembretes</h2>
+            <div id="remindersList"></div>
+        </div>
+    </div>
+
+    <div class="notification-badge" id="notificationBadge"></div>
+
+    <div class="alert-modal" id="alertModal">
+        <div class="alert-content">
+            <div class="alert-icon">🔔</div>
+            <div class="alert-title" id="alertTitle"></div>
+            <div class="alert-description" id="alertDescription"></div>
+            <div class="alert-time" id="alertTime"></div>
+            <div class="alert-buttons">
+                <button class="alert-btn alert-btn-dismiss" onclick="dismissAlert()">Adiar 5 min</button>
+                <button class="alert-btn alert-btn-complete" onclick="completeFromAlert()">Concluir</button>
+            </div>
+        </div>
+    </div>
+
+    <audio id="notificationSound" preload="auto">
+        <source src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAASAAAd8wAUFBQUFCIiIiIiIjAwMDAwPj4+Pj4+TExMTExZWVlZWVlnZ2dnZ3V1dXV1dYODg4ODkZGRkZGRn5+fn5+frKysrKy6urq6urrIyMjIyNbW1tbW1uTk5OTk8vLy8vLy//////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAUKAAAAAAAAHfPzV8GIAAAAAAAAAAAAAAAAAAAA//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xBkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EGQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xBkAA/wAABpAAAACAAADSAAAAEAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EGQAD/AAAGkAAAAIAAANIAAAAQAAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV" type="audio/mpeg">
+    </audio>
+
+    <script>
+        let reminders = [];
+        let currentTab = 'all';
+        let checkInterval;
+        let currentAlertReminder = null;
+
+        // Carregar lembretes salvos
+        function loadReminders() {
+            const saved = JSON.parse(localStorage.getItem('reminders') || '[]');
+            reminders = saved.map(r => ({
+                ...r,
+                time: new Date(r.time),
+                recurrenceEnd: r.recurrenceEnd ? new Date(r.recurrenceEnd) : null
+            }));
+            displayReminders();
+        }
+
+        // Salvar lembretes
+        function saveReminders() {
+            localStorage.setItem('reminders', JSON.stringify(reminders));
+        }
+
+        // Adicionar lembrete
+        function addReminder() {
+            const title = document.getElementById('reminderTitle').value.trim();
+            const time = document.getElementById('reminderTime').value;
+            const description = document.getElementById('reminderDescription').value.trim();
+            const recurrenceType = document.getElementById('recurrenceType').value;
+            const recurrenceEnd = document.getElementById('recurrenceEnd').value;
+
+            if (!title || !time) {
+                alert('Por favor, preencha o título e a data/hora do lembrete');
+                return;
+            }
+
+            const reminder = {
+                id: Date.now(),
+                title,
+                time: new Date(time),
+                description,
+                recurrenceType,
+                recurrenceEnd: recurrenceEnd ? new Date(recurrenceEnd) : null,
+                completed: false,
+                notified: false
+            };
+
+            reminders.push(reminder);
+            saveReminders();
+            displayReminders();
+
+            // Limpar formulário
+            document.getElementById('reminderTitle').value = '';
+            document.getElementById('reminderTime').value = '';
+            document.getElementById('reminderDescription').value = '';
+            document.getElementById('recurrenceType').value = 'none';
+            document.getElementById('recurrenceEnd').value = '';
+            toggleRecurrenceOptions();
+
+            showNotification('Lembrete criado com sucesso!');
+        }
+
+        // Exibir lembretes
+        function displayReminders() {
+            const container = document.getElementById('remindersList');
+            let filtered = [...reminders].filter(r => !r.completed);
+
+            // Filtrar por aba
+            const now = new Date();
+            if (currentTab === 'upcoming') {
+                filtered = filtered.filter(r => r.time > now);
+            } else if (currentTab === 'overdue') {
+                filtered = filtered.filter(r => r.time <= now);
+            }
+
+            // Ordenar por data
+            filtered.sort((a, b) => a.time - b.time);
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="empty-state">Nenhum lembrete encontrado</div>';
+                return;
+            }
+
+            container.innerHTML = filtered.map(reminder => {
+                const isOverdue = reminder.time <= now;
+                const timeStr = formatDateTime(reminder.time);
+                
+                return `
+                    <div class="reminder-item ${isOverdue ? 'overdue' : ''}">
+                        <div class="reminder-content">
+                            <div class="reminder-title">
+                                ${reminder.title}
+                                ${reminder.recurrenceType !== 'none' ? 
+                                    `<span class="badge badge-recurring">🔄 ${getRecurrenceLabel(reminder.recurrenceType)}</span>` 
+                                    : ''}
+                            </div>
+                            <div class="reminder-time">${isOverdue ? '⚠️ ' : '🕐 '}${timeStr}</div>
+                            ${reminder.description ? `<div class="reminder-description">${reminder.description}</div>` : ''}
+                        </div>
+                        <div class="reminder-actions">
+                            <button class="btn-small btn-complete" onclick="completeReminder(${reminder.id})">✓</button>
+                            <button class="btn-small btn-delete" onclick="deleteReminder(${reminder.id})">✕</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Completar lembrete
+        function completeReminder(id) {
+            const reminder = reminders.find(r => r.id === id);
+            if (!reminder) return;
+
+            if (reminder.recurrenceType !== 'none') {
+                // Criar próxima ocorrência
+                const nextTime = getNextRecurrence(reminder.time, reminder.recurrenceType);
+                
+                if (!reminder.recurrenceEnd || nextTime <= reminder.recurrenceEnd) {
+                    reminder.time = nextTime;
+                    reminder.notified = false;
+                    saveReminders();
+                    displayReminders();
+                    showNotification('Próxima ocorrência agendada!');
+                    return;
+                }
+            }
+
+            reminder.completed = true;
+            saveReminders();
+            displayReminders();
+            showNotification('Lembrete concluído!');
+        }
+
+        // Deletar lembrete
+        function deleteReminder(id) {
+            if (!confirm('Deseja realmente excluir este lembrete?')) return;
+            
+            reminders = reminders.filter(r => r.id !== id);
+            saveReminders();
+            displayReminders();
+            showNotification('Lembrete excluído!');
+        }
+
+        // Calcular próxima recorrência
+        function getNextRecurrence(currentDate, type) {
+            const next = new Date(currentDate);
+            
+            switch(type) {
+                case 'daily':
+                    next.setDate(next.getDate() + 1);
+                    break;
+                case 'weekly':
+                    next.setDate(next.getDate() + 7);
+                    break;
+                case 'monthly':
+                    next.setMonth(next.getMonth() + 1);
+                    break;
+            }
+            
+            return next;
+        }
+
+        // Formatar data e hora
+        function formatDateTime(date) {
+            const now = new Date();
+            const diff = date - now;
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            
+            const dateStr = date.toLocaleDateString('pt-BR');
+            const timeStr = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            
+            if (days === 0) return `Hoje às ${timeStr}`;
+            if (days === 1) return `Amanhã às ${timeStr}`;
+            if (days === -1) return `Ontem às ${timeStr}`;
+            
+            return `${dateStr} às ${timeStr}`;
+        }
+
+        // Label de recorrência
+        function getRecurrenceLabel(type) {
+            const labels = {
+                'daily': 'Diário',
+                'weekly': 'Semanal',
+                'monthly': 'Mensal'
+            };
+            return labels[type] || '';
+        }
+
+        // Mostrar/ocultar opções de recorrência
+        function toggleRecurrenceOptions() {
+            const type = document.getElementById('recurrenceType').value;
+            const options = document.getElementById('recurrenceOptions');
+            
+            if (type !== 'none') {
+                options.classList.add('show');
+            } else {
+                options.classList.remove('show');
+            }
+        }
+
+        // Trocar aba
+        function showTab(tab) {
+            currentTab = tab;
+            
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            displayReminders();
+        }
+
+        // Mostrar notificação
+        function showNotification(message) {
+            const badge = document.getElementById('notificationBadge');
+            badge.textContent = message;
+            badge.style.display = 'block';
+            
+            setTimeout(() => {
+                badge.style.display = 'none';
+            }, 3000);
+        }
+
+        // Verificar lembretes vencidos
+        function checkReminders() {
+            const now = new Date();
+            
+            reminders.forEach(reminder => {
+                if (!reminder.completed && !reminder.notified && reminder.time <= now) {
+                    reminder.notified = true;
+                    triggerAlert(reminder);
+                }
+            });
+            
+            saveReminders();
+            displayReminders();
+        }
+
+        // Disparar alerta com som e vibração
+        function triggerAlert(reminder) {
+            currentAlertReminder = reminder;
+            
+            // Tocar som
+            const sound = document.getElementById('notificationSound');
+            sound.play().catch(e => console.log('Erro ao tocar som:', e));
+            
+            // Vibrar (se disponível)
+            if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200]);
+            }
+            
+            // Notificação persistente via Service Worker (funciona em segundo plano)
+            if (swRegistration && 'Notification' in window && Notification.permission === 'granted') {
+                showPersistentNotification(reminder);
+            } else if ('Notification' in window && Notification.permission === 'granted') {
+                // Fallback para notificação normal
+                const notification = new Notification('⏰ ' + reminder.title, {
+                    body: reminder.description || 'Hora do seu lembrete!',
+                    icon: '📝',
+                    badge: '🔔',
+                    requireInteraction: true,
+                    vibrate: [200, 100, 200],
+                    tag: 'reminder-' + reminder.id
+                });
+                
+                notification.onclick = function() {
+                    window.focus();
+                    showAlertModal(reminder);
+                    notification.close();
+                };
+            }
+            
+            // Mostrar modal de alerta
+            showAlertModal(reminder);
+        }
+
+        // Mostrar modal de alerta
+        function showAlertModal(reminder) {
+            document.getElementById('alertTitle').textContent = reminder.title;
+            document.getElementById('alertDescription').textContent = reminder.description || 'Seu lembrete chegou!';
+            document.getElementById('alertTime').textContent = formatDateTime(reminder.time);
+            document.getElementById('alertModal').classList.add('show');
+            
+            // Tocar som novamente a cada 5 segundos até fechar
+            const soundInterval = setInterval(() => {
+                if (!document.getElementById('alertModal').classList.contains('show')) {
+                    clearInterval(soundInterval);
+                    return;
+                }
+                const sound = document.getElementById('notificationSound');
+                sound.play().catch(e => console.log('Erro ao tocar som:', e));
+            }, 5000);
+        }
+
+        // Dispensar alerta (adiar 5 minutos)
+        function dismissAlert() {
+            if (currentAlertReminder) {
+                const newTime = new Date(currentAlertReminder.time);
+                newTime.setMinutes(newTime.getMinutes() + 5);
+                currentAlertReminder.time = newTime;
+                currentAlertReminder.notified = false;
+                saveReminders();
+                displayReminders();
+                showNotification('Lembrete adiado por 5 minutos');
+            }
+            document.getElementById('alertModal').classList.remove('show');
+            currentAlertReminder = null;
+        }
+
+        // Concluir a partir do alerta
+        function completeFromAlert() {
+            if (currentAlertReminder) {
+                completeReminder(currentAlertReminder.id);
+            }
+            document.getElementById('alertModal').classList.remove('show');
+            currentAlertReminder = null;
+        }
+
+        // Solicitar permissão de notificação
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        }
+
+        // Service Worker e PWA
+        let deferredPrompt;
+        let swRegistration;
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then(registration => {
+                    swRegistration = registration;
+                    console.log('Service Worker registrado:', registration);
+                    
+                    // Solicitar permissão para notificações persistentes
+                    if ('Notification' in window && Notification.permission === 'default') {
+                        Notification.requestPermission();
+                    }
+                })
+                .catch(error => console.log('Erro ao registrar Service Worker:', error));
+
+            // Receber mensagens do service worker
+            navigator.serviceWorker.addEventListener('message', event => {
+                if (event.data && event.data.type === 'REQUEST_REMINDERS') {
+                    sendRemindersToServiceWorker();
+                }
+            });
+        }
+
+        // Detectar possibilidade de instalação
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            document.getElementById('installButton').style.display = 'block';
+        });
+
+        // Botão de instalação
+        document.getElementById('installButton').addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`Usuário ${outcome === 'accepted' ? 'aceitou' : 'recusou'} a instalação`);
+                deferredPrompt = null;
+                document.getElementById('installButton').style.display = 'none';
+            }
+        });
+
+        // Enviar lembretes para o service worker
+        function sendRemindersToServiceWorker() {
+            if (swRegistration && swRegistration.active) {
+                const activeReminders = reminders.filter(r => !r.completed && !r.notified);
+                swRegistration.active.postMessage({
+                    type: 'UPDATE_REMINDERS',
+                    reminders: activeReminders
+                });
+            }
+        }
+
+        // Mostrar notificação persistente via Service Worker
+        function showPersistentNotification(reminder) {
+            if (!swRegistration) return;
+            
+            const options = {
+                body: reminder.description || 'Hora do seu lembrete!',
+                icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
+                badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E🔔%3C/text%3E%3C/svg%3E',
+                vibrate: [200, 100, 200, 100, 200, 100, 200],
+                requireInteraction: true,
+                tag: 'reminder-' + reminder.id,
+                data: { reminderId: reminder.id },
+                actions: [
+                    { action: 'complete', title: '✓ Concluir' },
+                    { action: 'snooze', title: '⏰ Adiar 5min' }
+                ]
+            };
+            
+            swRegistration.showNotification('⏰ ' + reminder.title, options);
+        }
+
+        // Inicializar
+        window.onload = function() {
+            loadReminders();
+            requestNotificationPermission();
+            
+            // Verificar lembretes a cada 5 segundos para maior precisão
+            checkInterval = setInterval(checkReminders, 5000);
+            
+            // Verificar imediatamente ao carregar
+            checkReminders();
+            
+            // Enviar lembretes para o service worker a cada minuto
+            setInterval(sendRemindersToServiceWorker, 60000);
+            
+            // Definir data/hora mínima como agora
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            document.getElementById('reminderTime').min = now.toISOString().slice(0, 16);
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+const CACHE_NAME = 'lembretes-v1';
+const urlsToCache = [
+  './',
+  './index.html'
+];
+
+// Instalar Service Worker
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
+  );
+  self.skipWaiting();
+});
+
+// Ativar Service Worker
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+  self.clients.claim();
+});
+
+// Interceptar requisições
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
+  );
+});
+
+// Receber mensagens do app
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'CHECK_REMINDERS') {
+    checkRemindersInBackground();
+  }
+});
+
+// Verificar lembretes em segundo plano
+function checkRemindersInBackground() {
+  // Buscar lembretes do localStorage não é possível no service worker
+  // Então vamos usar a API de notificações quando recebermos comando do app
+  self.clients.matchAll().then(clients => {
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'REQUEST_REMINDERS'
+      });
+    });
+  });
+}
+
+// Mostrar notificação
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  
+  event.waitUntil(
+    clients.matchAll({ type: 'window' }).then(clientList => {
+      // Se já existe uma janela aberta, focar nela
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if (client.url === '/' && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // Caso contrário, abrir nova janela
+      if (clients.openWindow) {
+        return clients.openWindow('./');
+      }
+    })
+  );
+});
+
+// Manter service worker ativo
+self.addEventListener('sync', event => {
+  if (event.tag === 'check-reminders') {
+    event.waitUntil(checkRemindersInBackground());
+  }
+});
