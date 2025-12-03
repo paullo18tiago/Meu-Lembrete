@@ -792,12 +792,8 @@
         function saveReminders() {
             localStorage.setItem('reminders', JSON.stringify(reminders));
             
-            // Notificar service worker sobre mudanças
-            if (swRegistration && swRegistration.active) {
-                swRegistration.active.postMessage({
-                    type: 'REMINDERS_UPDATED'
-                });
-            }
+            // Enviar lembretes atualizados para o service worker
+            sendRemindersToServiceWorker();
         }
 
         // Adicionar lembrete
@@ -1475,40 +1471,19 @@
                 navigator.vibrate([200, 100, 200, 100, 200]);
             }
             
-            // SEMPRE mostrar o modal primeiro
+            // SEMPRE mostrar o modal se o app estiver aberto
             showAlertModal(reminder);
             
-            // Tentar mostrar notificação do navegador
-            if ('Notification' in window) {
-                if (Notification.permission === 'granted') {
-                    showBrowserNotification(reminder);
-                } else if (Notification.permission === 'default') {
-                    Notification.requestPermission().then(permission => {
-                        if (permission === 'granted') {
-                            showBrowserNotification(reminder);
-                        }
-                    });
-                }
-            }
-        }
-        
-        // Mostrar notificação do navegador
-        function showBrowserNotification(reminder) {
-            try {
-                const notification = new Notification('⏰ ' + reminder.title, {
-                    body: reminder.description || 'Hora do seu lembrete!',
-                    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
-                    requireInteraction: true,
-                    vibrate: [200, 100, 200],
-                    tag: 'reminder-' + reminder.id
+            // Enviar para Service Worker mostrar notificação NATIVA
+            if (swRegistration && swRegistration.active) {
+                swRegistration.active.postMessage({
+                    type: 'SHOW_NOTIFICATION',
+                    reminder: {
+                        id: reminder.id,
+                        title: reminder.title,
+                        description: reminder.description
+                    }
                 });
-                
-                notification.onclick = function() {
-                    window.focus();
-                    this.close();
-                };
-            } catch (e) {
-                console.log('Erro ao mostrar notificação:', e);
             }
         }
 
@@ -1618,20 +1593,30 @@
                     const testReminder = {
                         id: Date.now(),
                         title: 'Teste de Notificação',
-                        description: 'Se você está vendo isso, as notificações estão funcionando! ✅',
+                        description: 'Se você está vendo isso NA ÁREA DE NOTIFICAÇÕES, está funcionando! ✅',
                         time: new Date()
                     };
-                    triggerAlert(testReminder);
+                    
+                    // Enviar diretamente para o Service Worker
+                    if (swRegistration && swRegistration.active) {
+                        swRegistration.active.postMessage({
+                            type: 'SHOW_NOTIFICATION',
+                            reminder: testReminder
+                        });
+                        alert('✅ Notificação enviada! Verifique a área de notificações do seu Android.');
+                    } else {
+                        alert('❌ Service Worker não está ativo. Recarregue a página.');
+                    }
                 } else if (Notification.permission === 'default') {
                     Notification.requestPermission().then(permission => {
                         if (permission === 'granted') {
-                            testarNotificacao();
+                            alert('✅ Permissão concedida! Clique em "Testar Notificação" novamente.');
                         } else {
                             alert('❌ Você precisa permitir notificações nas configurações do navegador.');
                         }
                     });
                 } else {
-                    alert('❌ Notificações bloqueadas. Vá nas configurações do navegador e permita notificações para este site.');
+                    alert('❌ Notificações bloqueadas. Vá nas configurações do navegador (⋮ > Configurações do site > Notificações) e permita.');
                 }
             } else {
                 alert('❌ Seu navegador não suporta notificações.');
@@ -1662,17 +1647,26 @@
             navigator.serviceWorker.register('./service-worker.js')
                 .then(registration => {
                     swRegistration = registration;
-                    console.log('Service Worker registrado:', registration);
+                    console.log('✅ Service Worker registrado');
                     
-                    // Solicitar permissão para notificações persistentes
+                    // Solicitar permissão para notificações
                     if ('Notification' in window && Notification.permission === 'default') {
-                        Notification.requestPermission();
+                        Notification.requestPermission().then(permission => {
+                            console.log('🔔 Permissão de notificação:', permission);
+                        });
                     }
+                    
+                    // Enviar lembretes para o SW imediatamente
+                    setTimeout(() => {
+                        sendRemindersToServiceWorker();
+                    }, 1000);
                 })
-                .catch(error => console.log('Erro ao registrar Service Worker:', error));
+                .catch(error => console.log('❌ Erro ao registrar Service Worker:', error));
 
             // Receber mensagens do service worker
             navigator.serviceWorker.addEventListener('message', event => {
+                console.log('📨 Mensagem do SW:', event.data.type);
+                
                 if (event.data && event.data.type === 'REQUEST_REMINDERS') {
                     sendRemindersToServiceWorker();
                 } else if (event.data && event.data.type === 'CHECK_NOW') {
@@ -1681,6 +1675,8 @@
                     snoozeReminderById(event.data.reminderId, event.data.minutes);
                 } else if (event.data && event.data.type === 'COMPLETE_REMINDER') {
                     completeReminder(event.data.reminderId);
+                } else if (event.data && event.data.type === 'REMINDER_TRIGGERED') {
+                    checkReminders();
                 }
             });
         }
@@ -1706,7 +1702,8 @@
         // Enviar lembretes para o service worker
         function sendRemindersToServiceWorker() {
             if (swRegistration && swRegistration.active) {
-                const activeReminders = reminders.filter(r => !r.completed && !r.notified);
+                const activeReminders = reminders.filter(r => !r.completed);
+                console.log('📤 Enviando', activeReminders.length, 'lembretes para SW');
                 swRegistration.active.postMessage({
                     type: 'UPDATE_REMINDERS',
                     reminders: activeReminders
@@ -1727,8 +1724,11 @@
             // Verificar imediatamente ao carregar
             checkReminders();
             
-            // Enviar lembretes para o service worker a cada minuto
-            setInterval(sendRemindersToServiceWorker, 60000);
+            // Enviar lembretes para o service worker a cada 30 segundos
+            setInterval(sendRemindersToServiceWorker, 30000);
+            
+            // Enviar lembretes inicialmente após 2 segundos
+            setTimeout(sendRemindersToServiceWorker, 2000);
             
             // Definir data/hora mínima como agora
             const now = new Date();
