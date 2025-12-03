@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lembretes-v2';
+const CACHE_NAME = 'lembretes-v3';
 const urlsToCache = [
   './',
   './index.html'
@@ -123,3 +123,98 @@ self.addEventListener('notificationclick', event => {
     );
   }
 });
+
+// Notificar o app principal
+function notifyApp(type, data) {
+  console.log('[SW] notifyApp chamado. Tipo:', type, 'Data:', data);
+  
+  return clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+    console.log('[SW] Clientes encontrados:', clientList.length);
+    
+    if (clientList.length > 0) {
+      // App está aberto - enviar mensagem para TODOS os clientes
+      clientList.forEach(client => {
+        console.log('[SW] Enviando mensagem para cliente:', type);
+        client.postMessage({ type: type, ...data });
+      });
+      return Promise.resolve();
+    } else {
+      // App está fechado - abrir e enviar mensagem
+      console.log('[SW] Nenhum cliente aberto. Abrindo nova janela...');
+      if (clients.openWindow) {
+        return clients.openWindow('./').then(client => {
+          if (client) {
+            return new Promise(resolve => {
+              setTimeout(() => {
+                console.log('[SW] Enviando mensagem para nova janela:', type);
+                client.postMessage({ type: type, ...data });
+                resolve();
+              }, 1500);
+            });
+          }
+        });
+      }
+    }
+  }).catch(err => {
+    console.error('[SW] Erro em notifyApp:', err);
+  });
+}
+
+// Agendar próxima verificação
+function scheduleNextCheck() {
+  if (remindersData.length === 0) return;
+  
+  const now = new Date().getTime();
+  let nextCheck = null;
+  
+  remindersData.forEach(reminder => {
+    if (reminder.nextExecutions) {
+      reminder.nextExecutions.forEach(exec => {
+        const execTime = new Date(exec.time).getTime();
+        if (execTime > now && (!nextCheck || execTime < nextCheck)) {
+          nextCheck = execTime;
+        }
+      });
+    }
+  });
+  
+  if (nextCheck) {
+    const delay = nextCheck - now;
+    console.log('[SW] Próxima verificação em:', Math.round(delay / 1000), 'segundos');
+  }
+}
+
+// Verificar lembretes periodicamente
+setInterval(() => {
+  if (remindersData.length === 0) return;
+  
+  const now = new Date();
+  console.log('[SW] Verificando lembretes...', now.toLocaleTimeString());
+  
+  remindersData.forEach(reminder => {
+    if (reminder.completed) return;
+    
+    if (reminder.nextExecutions) {
+      reminder.nextExecutions.forEach(execution => {
+        const execTime = new Date(execution.time);
+        if (!execution.notified && execTime <= now) {
+          console.log('[SW] Lembrete vencido encontrado:', reminder.title);
+          execution.notified = true;
+          showNotification(reminder);
+          
+          // Notificar app se estiver aberto
+          clients.matchAll({ type: 'window' }).then(clientList => {
+            clientList.forEach(client => {
+              client.postMessage({
+                type: 'REMINDER_TRIGGERED',
+                reminderId: reminder.id
+              });
+            });
+          });
+        }
+      });
+    }
+  });
+}, 10000); // Verificar a cada 10 segundos
+
+console.log('[SW] Service Worker carregado e ativo!');
