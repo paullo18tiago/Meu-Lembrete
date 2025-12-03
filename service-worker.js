@@ -47,6 +47,11 @@ async function loadRemindersFromDB() {
     request.onsuccess = () => {
       storedReminders = request.result || [];
       console.log('📥 SW: Lembretes carregados do DB:', storedReminders.length);
+      
+      if (storedReminders.length > 0) {
+        console.log('📋 SW: IDs dos lembretes:', storedReminders.map(r => `${r.id} (${r.title})`).join(', '));
+      }
+      
       resolve(storedReminders);
     };
     
@@ -54,7 +59,7 @@ async function loadRemindersFromDB() {
   });
 }
 
-// Salvar lembretes no IndexedDB
+// Salvar lembretes no IndexedDB E localStorage
 async function saveRemindersToDB(reminders) {
   if (!db) await initDB();
   
@@ -70,8 +75,28 @@ async function saveRemindersToDB(reminders) {
       store.put(reminder);
     });
     
-    transaction.oncomplete = () => {
+    transaction.oncomplete = async () => {
       console.log('💾 SW: Lembretes salvos no DB');
+      
+      // TAMBÉM salvar no localStorage para sincronizar com o app
+      try {
+        // Buscar todos os clients (abas abertas do app)
+        const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+        
+        if (clients.length > 0) {
+          // Se há clients abertos, pedir para eles salvarem no localStorage
+          clients.forEach(client => {
+            client.postMessage({
+              type: 'SYNC_REMINDERS_TO_LOCALSTORAGE',
+              reminders: reminders
+            });
+          });
+          console.log('📤 SW: Pedido de sincronização enviado aos clients');
+        }
+      } catch (err) {
+        console.log('⚠️ SW: Erro ao sincronizar com clients:', err);
+      }
+      
       resolve();
     };
     
@@ -153,6 +178,15 @@ self.addEventListener('message', event => {
   } else if (event.data && event.data.type === 'KEEP_ALIVE') {
     // Responder ao ping de keep-alive
     event.ports[0].postMessage({ type: 'ALIVE' });
+    
+  } else if (event.data && event.data.type === 'DEBUG_REQUEST') {
+    // Responder com lembretes para debug
+    loadRemindersFromDB().then(() => {
+      event.ports[0].postMessage({ 
+        type: 'DEBUG_RESPONSE',
+        reminders: storedReminders
+      });
+    });
   }
 });
 
@@ -375,22 +409,33 @@ async function snoozeReminderInSW(reminderId, minutes) {
   const reminder = storedReminders.find(r => r.id === reminderId);
   if (!reminder) {
     console.log('❌ SW: Lembrete não encontrado:', reminderId);
+    console.log('📋 SW: Lembretes disponíveis:', storedReminders.map(r => r.id));
     return;
   }
+  
+  console.log('📝 SW: Lembrete ANTES de adiar:', JSON.stringify(reminder, null, 2));
   
   // Adiar todas as execuções pendentes
   if (!reminder.nextExecutions && reminder.time) {
     // Formato antigo
+    const oldTime = new Date(reminder.time);
     const newTime = new Date(reminder.time);
     newTime.setMinutes(newTime.getMinutes() + minutes);
     reminder.time = newTime;
     reminder.notified = false;
+    
+    console.log('⏰ SW: Formato antigo - De', oldTime.toLocaleTimeString(), 'para', newTime.toLocaleTimeString());
   } else if (reminder.nextExecutions) {
     // Novo formato
     reminder.nextExecutions = reminder.nextExecutions.map(exec => {
-      if (new Date(exec.time) <= new Date()) {
+      const execTime = new Date(exec.time);
+      if (execTime <= new Date()) {
+        const oldTime = new Date(exec.time);
         const newTime = new Date(exec.time);
         newTime.setMinutes(newTime.getMinutes() + minutes);
+        
+        console.log('⏰ SW: Execução adiada - De', oldTime.toLocaleTimeString(), 'para', newTime.toLocaleTimeString());
+        
         return {
           ...exec,
           time: newTime,
@@ -401,10 +446,12 @@ async function snoozeReminderInSW(reminderId, minutes) {
     });
   }
   
-  // Salvar no DB
+  console.log('📝 SW: Lembrete DEPOIS de adiar:', JSON.stringify(reminder, null, 2));
+  
+  // Salvar no DB (isso também sincroniza com localStorage via mensagem)
   await saveRemindersToDB(storedReminders);
   
-  console.log('✅ SW: Lembrete adiado e salvo no DB');
+  console.log('✅ SW: Lembrete adiado e salvo no DB + enviado para sincronização');
   
   // Reagendar verificação
   startPeriodicCheck();
