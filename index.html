@@ -34,31 +34,41 @@
         .header {
             text-align: center;
             color: white;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 0.9em;
         }
 
         .card {
             background: white;
-            border-radius: 15px;
-            padding: 25px;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 15px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .card h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
         }
 
         .input-group {
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
 
         .input-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
             font-weight: 600;
             color: #333;
+            font-size: 0.9em;
         }
 
         input[type="text"],
@@ -66,10 +76,10 @@
         select,
         textarea {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             border: 2px solid #e0e0e0;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
             transition: border-color 0.3s;
         }
 
@@ -89,9 +99,9 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            padding: 12px 25px;
+            padding: 10px 20px;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
@@ -109,10 +119,10 @@
 
         .reminder-item {
             background: #f8f9fa;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 10px;
-            border-left: 4px solid #667eea;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border-left: 3px solid #667eea;
             display: flex;
             justify-content: space-between;
             align-items: start;
@@ -129,20 +139,20 @@
 
         .reminder-title {
             font-weight: 600;
-            font-size: 1.1em;
+            font-size: 1em;
             color: #333;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
 
         .reminder-time {
             color: #666;
-            font-size: 0.9em;
-            margin-bottom: 5px;
+            font-size: 0.85em;
+            margin-bottom: 4px;
         }
 
         .reminder-description {
             color: #888;
-            font-size: 0.9em;
+            font-size: 0.85em;
         }
 
         .reminder-actions {
@@ -185,13 +195,13 @@
 
         .tab {
             flex: 1;
-            padding: 12px;
+            padding: 10px;
             background: rgba(255,255,255,0.2);
             color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             transition: all 0.3s;
         }
@@ -274,9 +284,9 @@
 
         .alert-content {
             background: white;
-            padding: 40px;
-            border-radius: 20px;
-            max-width: 500px;
+            padding: 25px;
+            border-radius: 15px;
+            max-width: 420px;
             width: 90%;
             text-align: center;
             animation: bounceIn 0.5s ease;
@@ -284,29 +294,29 @@
         }
 
         .alert-icon {
-            font-size: 80px;
-            margin-bottom: 20px;
+            font-size: 60px;
+            margin-bottom: 15px;
             animation: ring 1s ease infinite;
         }
 
         .alert-title {
-            font-size: 28px;
+            font-size: 22px;
             font-weight: 700;
             color: #333;
-            margin-bottom: 15px;
+            margin-bottom: 12px;
         }
 
         .alert-description {
-            font-size: 16px;
+            font-size: 15px;
             color: #666;
-            margin-bottom: 30px;
-            line-height: 1.6;
+            margin-bottom: 20px;
+            line-height: 1.5;
         }
 
         .alert-time {
-            font-size: 18px;
+            font-size: 14px;
             color: #999;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
         }
 
         .alert-buttons {
@@ -316,10 +326,10 @@
         }
 
         .alert-btn {
-            padding: 15px 30px;
-            border-radius: 10px;
+            padding: 12px 24px;
+            border-radius: 8px;
             border: none;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
@@ -587,6 +597,12 @@
         function completeReminder(id) {
             const reminder = reminders.find(r => r.id === id);
             if (!reminder) return;
+            
+            // Fechar modal se estiver aberto para este lembrete
+            if (currentAlertReminder && currentAlertReminder.id === id) {
+                document.getElementById('alertModal').classList.remove('show');
+                currentAlertReminder = null;
+            }
 
             if (reminder.recurrenceType !== 'none') {
                 // Criar próxima ocorrência
@@ -812,6 +828,12 @@
             saveReminders();
             displayReminders();
             showNotification(`Lembrete adiado por ${minutes} minutos`);
+            
+            // Fechar modal se estiver aberto para este lembrete
+            if (currentAlertReminder && currentAlertReminder.id === reminderId) {
+                document.getElementById('alertModal').classList.remove('show');
+                currentAlertReminder = null;
+            }
             
             // Agendar nova verificação
             const timeUntilReminder = newTime - new Date();
