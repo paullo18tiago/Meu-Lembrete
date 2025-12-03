@@ -77,6 +77,19 @@ async function saveRemindersToDB(reminders) {
     
     transaction.oncomplete = async () => {
       console.log('💾 SW: Lembretes salvos no DB');
+      console.log('📊 SW: Quantidade salva:', reminders.length);
+      
+      // Mostrar próximos horários
+      reminders.forEach(r => {
+        if (!r.completed) {
+          if (r.nextExecutions && r.nextExecutions.length > 0) {
+            const nextExec = r.nextExecutions[0];
+            console.log(`📅 [${r.title}] Próximo: ${new Date(nextExec.time).toLocaleString()}`);
+          } else if (r.time) {
+            console.log(`📅 [${r.title}] Próximo: ${new Date(r.time).toLocaleString()}`);
+          }
+        }
+      });
       
       // TAMBÉM salvar no localStorage para sincronizar com o app
       try {
@@ -91,7 +104,9 @@ async function saveRemindersToDB(reminders) {
               reminders: reminders
             });
           });
-          console.log('📤 SW: Pedido de sincronização enviado aos clients');
+          console.log('📤 SW: Pedido de sincronização enviado aos clients:', clients.length);
+        } else {
+          console.log('⚠️ SW: Nenhum client aberto para sincronizar');
         }
       } catch (err) {
         console.log('⚠️ SW: Erro ao sincronizar com clients:', err);
@@ -199,6 +214,9 @@ function startPeriodicCheck() {
   
   // Carregar lembretes do DB antes de iniciar
   loadRemindersFromDB().then(() => {
+    console.log('⏰ SW: Lembretes carregados, iniciando verificação periódica');
+    console.log('📋 SW: Total de lembretes ativos:', storedReminders.filter(r => !r.completed).length);
+    
     // Verificar a cada 5 segundos (ainda mais frequente)
     checkInterval = setInterval(() => {
       checkRemindersInBackground();
@@ -223,6 +241,13 @@ function checkRemindersInBackground() {
   }
   
   const now = new Date();
+  const nowStr = now.toLocaleTimeString();
+  
+  // Log a cada minuto para saber que está rodando
+  const seconds = now.getSeconds();
+  if (seconds === 0) {
+    console.log('⏰ SW: Verificando lembretes...', nowStr, '| Total:', storedReminders.length);
+  }
   
   storedReminders.forEach(reminder => {
     if (reminder.completed) return;
@@ -230,22 +255,42 @@ function checkRemindersInBackground() {
     // Compatibilidade retroativa
     if (!reminder.nextExecutions && reminder.time) {
       const reminderTime = new Date(reminder.time);
+      
+      // Log de debug
+      if (seconds === 0) {
+        console.log(`📋 [${reminder.title}] Próximo em: ${reminderTime.toLocaleTimeString()} | Notificado: ${reminder.notified}`);
+      }
+      
       if (!reminder.notified && reminderTime <= now) {
-        console.log('🔔 SW: Lembrete vencido (antigo):', reminder.title);
+        console.log('🔔 SW: Lembrete vencido (antigo):', reminder.title, '| Hora:', reminderTime.toLocaleTimeString());
+        reminder.notified = true;
         showNotification(reminder);
         notifyApp(reminder.id);
+        
+        // Salvar estado de notificado
+        saveRemindersToDB(storedReminders);
       }
       return;
     }
     
     // Novo sistema com múltiplos horários
     if (reminder.nextExecutions) {
-      reminder.nextExecutions.forEach(execution => {
+      reminder.nextExecutions.forEach((execution, idx) => {
         const execTime = new Date(execution.time);
+        
+        // Log de debug
+        if (seconds === 0) {
+          console.log(`📋 [${reminder.title}] Execução ${idx}: ${execTime.toLocaleTimeString()} | Notificado: ${execution.notified}`);
+        }
+        
         if (!execution.notified && execTime <= now) {
-          console.log('🔔 SW: Lembrete vencido (novo):', reminder.title);
+          console.log('🔔 SW: Lembrete vencido (novo):', reminder.title, '| Hora:', execTime.toLocaleTimeString());
+          execution.notified = true;
           showNotification(reminder);
           notifyApp(reminder.id);
+          
+          // Salvar estado de notificado
+          saveRemindersToDB(storedReminders);
         }
       });
     }
@@ -448,13 +493,32 @@ async function snoozeReminderInSW(reminderId, minutes) {
   
   console.log('📝 SW: Lembrete DEPOIS de adiar:', JSON.stringify(reminder, null, 2));
   
+  // Atualizar o array global IMEDIATAMENTE
+  const index = storedReminders.findIndex(r => r.id === reminderId);
+  if (index !== -1) {
+    storedReminders[index] = reminder;
+    console.log('✅ SW: Array global atualizado');
+  }
+  
   // Salvar no DB (isso também sincroniza com localStorage via mensagem)
   await saveRemindersToDB(storedReminders);
   
   console.log('✅ SW: Lembrete adiado e salvo no DB + enviado para sincronização');
   
-  // Reagendar verificação
+  // Recarregar lembretes do DB para garantir
+  await loadRemindersFromDB();
+  
+  // Reiniciar verificação periódica com dados atualizados
+  if (checkInterval) {
+    clearInterval(checkInterval);
+  }
   startPeriodicCheck();
+  
+  // Fazer uma verificação IMEDIATA
+  setTimeout(() => {
+    console.log('🔄 SW: Verificação imediata após adiar');
+    checkRemindersInBackground();
+  }, 1000);
 }
 
 // Concluir lembrete DIRETO no Service Worker
@@ -507,12 +571,27 @@ async function completeReminderInSW(reminderId) {
     }
   }
   
+  console.log('✅ SW: Lembrete processado');
+  
+  // Atualizar o array global IMEDIATAMENTE
+  const index = storedReminders.findIndex(r => r.id === reminderId);
+  if (index !== -1) {
+    storedReminders[index] = reminder;
+    console.log('✅ SW: Array global atualizado');
+  }
+  
   // Salvar no DB
   await saveRemindersToDB(storedReminders);
   
   console.log('✅ SW: Lembrete processado e salvo no DB');
   
-  // Reagendar verificação
+  // Recarregar lembretes do DB para garantir
+  await loadRemindersFromDB();
+  
+  // Reiniciar verificação periódica com dados atualizados
+  if (checkInterval) {
+    clearInterval(checkInterval);
+  }
   startPeriodicCheck();
 }
 
