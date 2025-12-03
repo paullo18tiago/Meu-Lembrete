@@ -1527,12 +1527,21 @@
         
         // Concluir lembrete a partir da notificação do sistema
         function completeReminderFromNotification(reminderId, closeModal) {
-            const reminder = reminders.find(r => r.id === reminderId);
-            if (!reminder) return;
+            console.log('✅ completeReminderFromNotification chamado:', reminderId, 'closeModal:', closeModal);
             
-            // Fechar modal se veio da notificação do sistema
-            if (closeModal && currentAlertReminder && currentAlertReminder.id === reminderId) {
-                document.getElementById('alertModal').classList.remove('show');
+            const reminder = reminders.find(r => r.id === reminderId);
+            if (!reminder) {
+                console.log('❌ Lembrete não encontrado:', reminderId);
+                return;
+            }
+            
+            // Fechar modal se solicitado
+            if (closeModal) {
+                console.log('🚪 Fechando modal (closeModal=true)');
+                const modal = document.getElementById('alertModal');
+                if (modal) {
+                    modal.classList.remove('show');
+                }
                 currentAlertReminder = null;
             }
             
@@ -1542,8 +1551,13 @@
         
         // Adiar lembrete por ID (chamado pelo service worker)
         function snoozeReminderById(reminderId, minutes, closeModal) {
+            console.log('⏰ snoozeReminderById chamado:', reminderId, minutes, 'closeModal:', closeModal);
+            
             const reminder = reminders.find(r => r.id === reminderId);
-            if (!reminder) return;
+            if (!reminder) {
+                console.log('❌ Lembrete não encontrado:', reminderId);
+                return;
+            }
             
             // Compatibilidade retroativa
             if (!reminder.nextExecutions && reminder.time) {
@@ -1571,10 +1585,16 @@
             displayReminders();
             showNotification(`Lembrete adiado por ${minutes} minutos`);
             
-            // Fechar modal SOMENTE se veio da notificação do sistema
-            if (closeModal && currentAlertReminder && currentAlertReminder.id === reminderId) {
-                document.getElementById('alertModal').classList.remove('show');
+            // Fechar modal se solicitado (closeModal === true)
+            if (closeModal === true) {
+                console.log('🚪 Fechando modal via closeModal=true');
+                const modal = document.getElementById('alertModal');
+                if (modal) {
+                    modal.classList.remove('show');
+                }
                 currentAlertReminder = null;
+            } else {
+                console.log('ℹ️ Modal mantido aberto (closeModal não é true, é:', closeModal, ')');
             }
         }
 
@@ -1645,12 +1665,37 @@
         // Service Worker e PWA
         let deferredPrompt;
         let swRegistration;
+        
+        // Listener global para mensagens do service worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', function(event) {
+                console.log('📨 [GLOBAL LISTENER] Mensagem do SW:', event.data);
+                
+                if (!event.data || !event.data.type) {
+                    console.log('⚠️ Mensagem sem tipo');
+                    return;
+                }
+                
+                // Processar mensagens do SW
+                if (event.data.type === 'SNOOZE_REMINDER') {
+                    console.log('⏰ [GLOBAL] SW pediu para adiar:', event.data.reminderId, 'closeModal:', event.data.closeModal);
+                    snoozeReminderById(event.data.reminderId, event.data.minutes, event.data.closeModal);
+                    
+                } else if (event.data.type === 'COMPLETE_REMINDER') {
+                    console.log('✅ [GLOBAL] SW pediu para concluir:', event.data.reminderId, 'closeModal:', event.data.closeModal);
+                    completeReminderFromNotification(event.data.reminderId, event.data.closeModal);
+                }
+            });
+        }
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./service-worker.js')
+            navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' })
                 .then(registration => {
                     swRegistration = registration;
                     console.log('✅ Service Worker registrado');
+                    
+                    // Forçar atualização do SW
+                    registration.update();
                     
                     // Solicitar permissão para notificações
                     if ('Notification' in window && Notification.permission === 'default') {
@@ -1666,18 +1711,14 @@
                 })
                 .catch(error => console.log('❌ Erro ao registrar Service Worker:', error));
 
-            // Receber mensagens do service worker
+            // Receber mensagens do service worker (listener secundário)
             navigator.serviceWorker.addEventListener('message', event => {
-                console.log('📨 Mensagem do SW:', event.data.type);
+                console.log('📨 [LISTENER 2] Mensagem do SW:', event.data.type);
                 
                 if (event.data && event.data.type === 'REQUEST_REMINDERS') {
                     sendRemindersToServiceWorker();
                 } else if (event.data && event.data.type === 'CHECK_NOW') {
                     checkReminders();
-                } else if (event.data && event.data.type === 'SNOOZE_REMINDER') {
-                    snoozeReminderById(event.data.reminderId, event.data.minutes, event.data.closeModal);
-                } else if (event.data && event.data.type === 'COMPLETE_REMINDER') {
-                    completeReminderFromNotification(event.data.reminderId, event.data.closeModal);
                 } else if (event.data && event.data.type === 'REMINDER_TRIGGERED') {
                     checkReminders();
                 }
@@ -1717,6 +1758,23 @@
         // Reabrir modal quando o app ganhar foco (se houver lembrete pendente)
         window.addEventListener('focus', function() {
             if (currentAlertReminder) {
+                showAlertModal(currentAlertReminder);
+            }
+        });
+        
+        // Reabrir modal quando o app ganhar foco (se houver lembrete pendente)
+        window.addEventListener('focus', function() {
+            console.log('👁️ App ganhou foco');
+            if (currentAlertReminder) {
+                console.log('🔔 Reabrindo modal para lembrete:', currentAlertReminder.title);
+                showAlertModal(currentAlertReminder);
+            }
+        });
+        
+        // Detectar quando a página fica visível
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden && currentAlertReminder) {
+                console.log('👁️ Página ficou visível, reabrindo modal');
                 showAlertModal(currentAlertReminder);
             }
         });
