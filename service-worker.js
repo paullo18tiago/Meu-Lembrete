@@ -1,24 +1,26 @@
-const CACHE_NAME = 'lembretes-v3';
+const CACHE_NAME = 'lembretes-v2';
 const urlsToCache = [
   './',
   './index.html'
 ];
 
-let remindersData = [];
+let storedReminders = [];
+let checkInterval = null;
+let wakeLock = null;
 
 // Instalar Service Worker
 self.addEventListener('install', event => {
-  console.log('[SW] Instalando...');
+  console.log('🔧 SW: Instalando...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 // Ativar Service Worker
 self.addEventListener('activate', event => {
-  console.log('[SW] Ativando...');
+  console.log('✅ SW: Ativando...');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
@@ -28,9 +30,11 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
+  
+  // Iniciar verificação periódica imediatamente
+  startPeriodicCheck();
 });
 
 // Interceptar requisições
@@ -38,183 +42,238 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     caches.match(event.request)
       .then(response => response || fetch(event.request))
-      .catch(() => caches.match('./index.html'))
   );
 });
 
-// Receber mensagens do app principal
+// Receber mensagens do app
 self.addEventListener('message', event => {
-  console.log('[SW] Mensagem recebida:', event.data.type);
+  console.log('📨 SW: Mensagem recebida:', event.data.type);
   
   if (event.data && event.data.type === 'UPDATE_REMINDERS') {
-    remindersData = event.data.reminders;
-    console.log('[SW] Lembretes atualizados:', remindersData.length);
-    scheduleNextCheck();
-  }
-  
-  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
-    const reminder = event.data.reminder;
-    showNotification(reminder);
-  }
-  
-  if (event.data && event.data.type === 'APP_READY') {
-    console.log('[SW] App está pronto');
+    storedReminders = event.data.reminders || [];
+    console.log('📝 SW: Lembretes atualizados:', storedReminders.length);
+    
+    // Reiniciar verificação com novos lembretes
+    startPeriodicCheck();
+    
+  } else if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    // Mostrar notificação imediatamente
+    showNotification(event.data.reminder);
+    
+  } else if (event.data && event.data.type === 'KEEP_ALIVE') {
+    // Responder ao ping de keep-alive
+    event.ports[0].postMessage({ type: 'ALIVE' });
   }
 });
 
-// Mostrar notificação
-function showNotification(reminder) {
-  console.log('[SW] Mostrando notificação:', reminder.title);
+// Iniciar verificação periódica em segundo plano
+function startPeriodicCheck() {
+  // Limpar intervalo anterior
+  if (checkInterval) {
+    clearInterval(checkInterval);
+  }
   
+  // Verificar a cada 10 segundos (mais frequente)
+  checkInterval = setInterval(() => {
+    checkRemindersInBackground();
+  }, 10000);
+  
+  // Verificar imediatamente
+  checkRemindersInBackground();
+  
+  console.log('⏰ SW: Verificação periódica iniciada (10s)');
+}
+
+// Verificar lembretes em segundo plano
+function checkRemindersInBackground() {
+  if (!storedReminders || storedReminders.length === 0) {
+    return;
+  }
+  
+  const now = new Date();
+  
+  storedReminders.forEach(reminder => {
+    if (reminder.completed) return;
+    
+    // Compatibilidade retroativa
+    if (!reminder.nextExecutions && reminder.time) {
+      const reminderTime = new Date(reminder.time);
+      if (!reminder.notified && reminderTime <= now) {
+        console.log('🔔 SW: Lembrete vencido (antigo):', reminder.title);
+        showNotification(reminder);
+        notifyApp(reminder.id);
+      }
+      return;
+    }
+    
+    // Novo sistema com múltiplos horários
+    if (reminder.nextExecutions) {
+      reminder.nextExecutions.forEach(execution => {
+        const execTime = new Date(execution.time);
+        if (!execution.notified && execTime <= now) {
+          console.log('🔔 SW: Lembrete vencido (novo):', reminder.title);
+          showNotification(reminder);
+          notifyApp(reminder.id);
+        }
+      });
+    }
+  });
+}
+
+// Mostrar notificação nativa
+function showNotification(reminder) {
   const options = {
     body: reminder.description || 'Hora do seu lembrete!',
-    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
-    badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle" fill="white"%3E🔔%3C/text%3E%3C/svg%3E',
-    vibrate: [200, 100, 200, 100, 200, 100, 200],
-    requireInteraction: true,
-    silent: false,
+    icon: '/icon-192.png',
+    badge: '/icon-72.png',
+    vibrate: [300, 100, 300, 100, 300, 100, 300],
+    requireInteraction: true, // CRÍTICO: mantém a notificação até o usuário interagir
     tag: 'reminder-' + reminder.id,
-    renotify: true,
+    renotify: true, // Notifica novamente mesmo se já existir
+    silent: false,
     data: { 
       reminderId: reminder.id,
-      url: './'
+      timestamp: Date.now()
     },
     actions: [
-      { action: 'complete', title: '✓ Concluir', icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle"%3E✓%3C/text%3E%3C/svg%3E' },
-      { action: 'snooze', title: '⏰ Adiar 5min', icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ctext x="50" y="70" font-size="60" text-anchor="middle"%3E⏰%3C/text%3E%3C/svg%3E' }
+      { action: 'complete', title: '✓ Concluir', icon: '/icon-72.png' },
+      { action: 'snooze', title: '⏰ +5min', icon: '/icon-72.png' }
     ]
   };
   
-  return self.registration.showNotification('⏰ ' + reminder.title, options);
+  self.registration.showNotification('⏰ ' + reminder.title, options)
+    .then(() => {
+      console.log('✅ SW: Notificação exibida:', reminder.title);
+    })
+    .catch(err => {
+      console.error('❌ SW: Erro ao exibir notificação:', err);
+    });
 }
 
-// Clique na notificação
+// Notificar o app sobre lembrete disparado
+function notifyApp(reminderId) {
+  self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(clients => {
+    clients.forEach(client => {
+      client.postMessage({
+        type: 'REMINDER_TRIGGERED',
+        reminderId: reminderId
+      });
+    });
+  });
+}
+
+// Tratar cliques na notificação
 self.addEventListener('notificationclick', event => {
-  console.log('[SW] Clique na notificação:', event.action);
-  const reminderId = event.notification.data ? event.notification.data.reminderId : null;
+  console.log('👆 SW: Clique na notificação:', event.action);
   
+  const reminderId = event.notification.data ? event.notification.data.reminderId : null;
   event.notification.close();
   
   if (event.action === 'snooze' && reminderId) {
-    // Adiar 5 minutos - fechar modal também
+    console.log('⏰ SW: Adiando lembrete:', reminderId);
+    
+    // Enviar mensagem para o app adiar E fechar modal
     event.waitUntil(
-      notifyApp('SNOOZE_REMINDER', { reminderId: reminderId, minutes: 5, closeModal: true })
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        if (clientList.length > 0) {
+          // App está aberto - enviar mensagem
+          clientList.forEach(client => {
+            client.postMessage({
+              type: 'SNOOZE_REMINDER',
+              reminderId: reminderId,
+              minutes: 5,
+              closeModal: true // IMPORTANTE: fechar modal quando vier da notificação
+            });
+          });
+        } else {
+          // App está fechado - abrir e enviar mensagem
+          return self.clients.openWindow('/').then(client => {
+            setTimeout(() => {
+              client.postMessage({
+                type: 'SNOOZE_REMINDER',
+                reminderId: reminderId,
+                minutes: 5,
+                closeModal: true
+              });
+            }, 1000);
+          });
+        }
+      })
     );
+    
   } else if (event.action === 'complete' && reminderId) {
-    // Concluir lembrete - fechar modal também
+    console.log('✅ SW: Concluindo lembrete:', reminderId);
+    
+    // Enviar mensagem para o app concluir E fechar modal
     event.waitUntil(
-      notifyApp('COMPLETE_REMINDER', { reminderId: reminderId, closeModal: true })
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+        if (clientList.length > 0) {
+          // App está aberto - enviar mensagem
+          clientList.forEach(client => {
+            client.postMessage({
+              type: 'COMPLETE_REMINDER',
+              reminderId: reminderId,
+              closeModal: true // IMPORTANTE: fechar modal quando vier da notificação
+            });
+          });
+        } else {
+          // App está fechado - abrir e enviar mensagem
+          return self.clients.openWindow('/').then(client => {
+            setTimeout(() => {
+              client.postMessage({
+                type: 'COMPLETE_REMINDER',
+                reminderId: reminderId,
+                closeModal: true
+              });
+            }, 1000);
+          });
+        }
+      })
     );
+    
   } else {
-    // Clique normal - abrir app e mostrar modal
+    // Clique normal - apenas abrir o app
     event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-        // Se já existe uma janela aberta, focar nela
-        for (let client of clientList) {
-          if (client.url.includes(self.registration.scope) && 'focus' in client) {
+      self.clients.matchAll({ type: 'window' }).then(clientList => {
+        for (let i = 0; i < clientList.length; i++) {
+          const client = clientList[i];
+          if ('focus' in client) {
             return client.focus();
           }
         }
-        // Se não, abrir nova janela
-        if (clients.openWindow) {
-          return clients.openWindow('./');
+        if (self.clients.openWindow) {
+          return self.clients.openWindow('/');
         }
       })
     );
   }
 });
 
-// Notificar o app principal
-function notifyApp(type, data) {
-  console.log('[SW] notifyApp chamado. Tipo:', type, 'Data:', data);
-  
-  return clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-    console.log('[SW] Clientes encontrados:', clientList.length);
-    
-    if (clientList.length > 0) {
-      // App está aberto - enviar mensagem para TODOS os clientes
-      clientList.forEach(client => {
-        console.log('[SW] Enviando mensagem para cliente:', type);
-        client.postMessage({ type: type, ...data });
-      });
-      return Promise.resolve();
-    } else {
-      // App está fechado - abrir e enviar mensagem
-      console.log('[SW] Nenhum cliente aberto. Abrindo nova janela...');
-      if (clients.openWindow) {
-        return clients.openWindow('./').then(client => {
-          if (client) {
-            return new Promise(resolve => {
-              setTimeout(() => {
-                console.log('[SW] Enviando mensagem para nova janela:', type);
-                client.postMessage({ type: type, ...data });
-                resolve();
-              }, 1500);
-            });
-          }
-        });
-      }
-    }
-  }).catch(err => {
-    console.error('[SW] Erro em notifyApp:', err);
-  });
-}
-
-// Agendar próxima verificação
-function scheduleNextCheck() {
-  if (remindersData.length === 0) return;
-  
-  const now = new Date().getTime();
-  let nextCheck = null;
-  
-  remindersData.forEach(reminder => {
-    if (reminder.nextExecutions) {
-      reminder.nextExecutions.forEach(exec => {
-        const execTime = new Date(exec.time).getTime();
-        if (execTime > now && (!nextCheck || execTime < nextCheck)) {
-          nextCheck = execTime;
-        }
-      });
-    }
-  });
-  
-  if (nextCheck) {
-    const delay = nextCheck - now;
-    console.log('[SW] Próxima verificação em:', Math.round(delay / 1000), 'segundos');
+// Manter SW ativo usando Background Sync API
+self.addEventListener('sync', event => {
+  console.log('🔄 SW: Background sync:', event.tag);
+  if (event.tag === 'check-reminders') {
+    event.waitUntil(checkRemindersInBackground());
   }
-}
+});
 
-// Verificar lembretes periodicamente
+// Periodic Background Sync (se disponível)
+self.addEventListener('periodicsync', event => {
+  console.log('🔄 SW: Periodic sync:', event.tag);
+  if (event.tag === 'check-reminders-periodic') {
+    event.waitUntil(checkRemindersInBackground());
+  }
+});
+
+// Push notification (mesmo sem servidor push, ajuda a manter o SW vivo)
+self.addEventListener('push', event => {
+  console.log('📬 SW: Push recebido');
+  event.waitUntil(checkRemindersInBackground());
+});
+
+// Manter o SW vivo com fetch fake periódico
 setInterval(() => {
-  if (remindersData.length === 0) return;
-  
-  const now = new Date();
-  console.log('[SW] Verificando lembretes...', now.toLocaleTimeString());
-  
-  remindersData.forEach(reminder => {
-    if (reminder.completed) return;
-    
-    if (reminder.nextExecutions) {
-      reminder.nextExecutions.forEach(execution => {
-        const execTime = new Date(execution.time);
-        if (!execution.notified && execTime <= now) {
-          console.log('[SW] Lembrete vencido encontrado:', reminder.title);
-          execution.notified = true;
-          showNotification(reminder);
-          
-          // Notificar app se estiver aberto
-          clients.matchAll({ type: 'window' }).then(clientList => {
-            clientList.forEach(client => {
-              client.postMessage({
-                type: 'REMINDER_TRIGGERED',
-                reminderId: reminder.id
-              });
-            });
-          });
-        }
-      });
-    }
-  });
-}, 10000); // Verificar a cada 10 segundos
+  fetch('/?keepalive=' + Date.now()).catch(() => {});
+}, 25000); // A cada 25 segundos
 
-console.log('[SW] Service Worker carregado e ativo!');
+console.log('🚀 SW: Service Worker carregado');
