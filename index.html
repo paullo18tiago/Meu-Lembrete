@@ -1779,6 +1779,89 @@
             }
         });
 
+// Sistema de Keep-Alive para manter SW ativo
+        function startKeepAlive() {
+            // Ping ao SW a cada 20 segundos
+            setInterval(() => {
+                if (swRegistration && swRegistration.active) {
+                    const channel = new MessageChannel();
+                    channel.port1.onmessage = (event) => {
+                        if (event.data.type === 'ALIVE') {
+                            console.log('💚 SW está vivo');
+                        }
+                    };
+                    
+                    swRegistration.active.postMessage(
+                        { type: 'KEEP_ALIVE' },
+                        [channel.port2]
+                    );
+                }
+            }, 20000);
+            
+            // Enviar lembretes a cada 30 segundos
+            setInterval(() => {
+                sendRemindersToServiceWorker();
+            }, 30000);
+            
+            console.log('💚 Keep-Alive iniciado');
+        }
+
+        // Registrar Background Sync para manter SW ativo
+        async function registerBackgroundSync() {
+            if ('serviceWorker' in navigator && 'sync' in self.registration) {
+                try {
+                    const registration = await navigator.serviceWorker.ready;
+                    await registration.sync.register('check-reminders');
+                    console.log('✅ Background Sync registrado');
+                } catch (err) {
+                    console.log('❌ Background Sync não suportado:', err);
+                }
+            }
+            
+            // Tentar registrar Periodic Background Sync
+            if ('serviceWorker' in navigator && 'periodicSync' in self.registration) {
+                try {
+                    const registration = await navigator.serviceWorker.ready;
+                    const status = await navigator.permissions.query({
+                        name: 'periodic-background-sync',
+                    });
+                    
+                    if (status.state === 'granted') {
+                        await registration.periodicSync.register('check-reminders-periodic', {
+                            minInterval: 15 * 60 * 1000, // 15 minutos
+                        });
+                        console.log('✅ Periodic Background Sync registrado (15min)');
+                    }
+                } catch (err) {
+                    console.log('❌ Periodic Background Sync não suportado:', err);
+                }
+            }
+        }
+
+        // Manter tela acordada (opcional, mas ajuda)
+        let wakeLock = null;
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('🔦 Wake Lock ativado (tela permanecerá ligada)');
+                    
+                    wakeLock.addEventListener('release', () => {
+                        console.log('🔦 Wake Lock liberado');
+                    });
+                } catch (err) {
+                    console.log('❌ Wake Lock não disponível:', err);
+                }
+            }
+        }
+
+        // Re-adquirir wake lock quando a página fica visível
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+
         // Inicializar
         window.onload = function() {
             console.log('🚀 Aplicativo iniciado');
@@ -1810,6 +1893,14 @@
             
             // Inicializar visualização de agendamento
             toggleScheduleType();
+            
+            // Iniciar sistemas de sobrevivência em segundo plano
+            startKeepAlive();
+            registerBackgroundSync();
+            
+            // Solicitar Wake Lock (opcional, mas ajuda muito)
+            // NOTA: Isso mantém a tela ligada. Comente a linha abaixo se não quiser isso.
+            // requestWakeLock();
         };
     </script>
 </body>
