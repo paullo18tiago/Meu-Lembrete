@@ -60,6 +60,18 @@ self.addEventListener('message', event => {
     // Mostrar notificação imediatamente
     showNotification(event.data.reminder);
     
+  } else if (event.data && event.data.type === 'CLOSE_NOTIFICATION') {
+    // Fechar notificação específica
+    const reminderId = event.data.reminderId;
+    const tag = 'reminder-' + reminderId;
+    
+    self.registration.getNotifications({ tag: tag }).then(notifications => {
+      notifications.forEach(notification => {
+        console.log('🚫 SW: Fechando notificação:', tag);
+        notification.close();
+      });
+    });
+    
   } else if (event.data && event.data.type === 'KEEP_ALIVE') {
     // Responder ao ping de keep-alive
     event.ports[0].postMessage({ type: 'ALIVE' });
@@ -73,15 +85,20 @@ function startPeriodicCheck() {
     clearInterval(checkInterval);
   }
   
-  // Verificar a cada 10 segundos (mais frequente)
+  // Verificar a cada 5 segundos (ainda mais frequente)
   checkInterval = setInterval(() => {
     checkRemindersInBackground();
-  }, 10000);
+  }, 5000);
   
   // Verificar imediatamente
   checkRemindersInBackground();
   
-  console.log('⏰ SW: Verificação periódica iniciada (10s)');
+  // Manter uma verificação extra a cada 30 segundos como backup
+  setInterval(() => {
+    checkRemindersInBackground();
+  }, 30000);
+  
+  console.log('⏰ SW: Verificação periódica iniciada (5s + backup 30s)');
 }
 
 // Verificar lembretes em segundo plano
@@ -124,8 +141,8 @@ function checkRemindersInBackground() {
 function showNotification(reminder) {
   const options = {
     body: reminder.description || 'Hora do seu lembrete!',
-    icon: '/icon-192.png',
-    badge: '/icon-72.png',
+    icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="75" font-size="60" text-anchor="middle" fill="white"%3E📝%3C/text%3E%3C/svg%3E',
+    badge: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="45" fill="%23667eea"/%3E%3Ctext x="50" y="75" font-size="60" text-anchor="middle" fill="white"%3E🔔%3C/text%3E%3C/svg%3E',
     vibrate: [300, 100, 300, 100, 300, 100, 300],
     requireInteraction: true, // CRÍTICO: mantém a notificação até o usuário interagir
     tag: 'reminder-' + reminder.id,
@@ -136,18 +153,33 @@ function showNotification(reminder) {
       timestamp: Date.now()
     },
     actions: [
-      { action: 'complete', title: '✓ Concluir', icon: '/icon-72.png' },
-      { action: 'snooze', title: '⏰ +5min', icon: '/icon-72.png' }
+      { action: 'complete', title: '✓ Concluir' },
+      { action: 'snooze', title: '⏰ +5min' }
     ]
   };
   
-  self.registration.showNotification('⏰ ' + reminder.title, options)
-    .then(() => {
-      console.log('✅ SW: Notificação exibida:', reminder.title);
-    })
-    .catch(err => {
-      console.error('❌ SW: Erro ao exibir notificação:', err);
-    });
+  // Fechar notificação anterior do mesmo lembrete antes de mostrar nova
+  self.registration.getNotifications({ tag: 'reminder-' + reminder.id }).then(notifications => {
+    notifications.forEach(n => n.close());
+  }).then(() => {
+    // Mostrar nova notificação
+    return self.registration.showNotification('⏰ ' + reminder.title, options);
+  }).then(() => {
+    console.log('✅ SW: Notificação exibida:', reminder.title);
+    
+    // Agendar re-notificação após 3 minutos se não interagir (backup)
+    setTimeout(() => {
+      self.registration.getNotifications({ tag: 'reminder-' + reminder.id }).then(notifications => {
+        if (notifications.length > 0) {
+          // Notificação ainda está lá, re-notificar
+          self.registration.showNotification('⏰ LEMBRETE: ' + reminder.title, options);
+          console.log('🔁 SW: Re-notificação enviada:', reminder.title);
+        }
+      });
+    }, 3 * 60 * 1000);
+  }).catch(err => {
+    console.error('❌ SW: Erro ao exibir notificação:', err);
+  });
 }
 
 // Notificar o app sobre lembrete disparado
@@ -271,9 +303,27 @@ self.addEventListener('push', event => {
   event.waitUntil(checkRemindersInBackground());
 });
 
-// Manter o SW vivo com fetch fake periódico
+// Manter o SW vivo com múltiplas estratégias
 setInterval(() => {
   fetch('/?keepalive=' + Date.now()).catch(() => {});
 }, 25000); // A cada 25 segundos
 
-console.log('🚀 SW: Service Worker carregado');
+// Estratégia adicional: auto-mensagem a cada 15 segundos
+setInterval(() => {
+  self.clients.matchAll({ includeUncontrolled: true }).then(clients => {
+    if (clients.length > 0) {
+      checkRemindersInBackground();
+    }
+  });
+}, 15000);
+
+// Estratégia 3: Re-registrar periodicsync a cada 5 minutos
+setInterval(async () => {
+  try {
+    await self.registration.sync.register('check-reminders');
+  } catch (err) {
+    console.log('⚠️ Sync re-register falhou:', err);
+  }
+}, 5 * 60 * 1000);
+
+console.log('🚀 SW: Service Worker carregado com estratégias de sobrevivência');
