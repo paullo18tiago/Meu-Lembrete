@@ -1721,7 +1721,13 @@
                     swRegistration = registration;
                     console.log('✅ Service Worker registrado');
                     
-                    // Forçar atualização do SW
+                    // Forçar atualização do SW a cada 5 minutos
+                    setInterval(() => {
+                        registration.update();
+                        console.log('🔄 SW atualizado');
+                    }, 5 * 60 * 1000);
+                    
+                    // Atualização imediata
                     registration.update();
                     
                     // Solicitar permissão para notificações
@@ -1735,6 +1741,11 @@
                     setTimeout(() => {
                         sendRemindersToServiceWorker();
                     }, 1000);
+                    
+                    // Re-enviar lembretes periodicamente (backup)
+                    setInterval(() => {
+                        sendRemindersToServiceWorker();
+                    }, 2 * 60 * 1000); // A cada 2 minutos
                 })
                 .catch(error => console.log('❌ Erro ao registrar Service Worker:', error));
 
@@ -1808,7 +1819,7 @@
 
 // Sistema de Keep-Alive para manter SW ativo
         function startKeepAlive() {
-            // Ping ao SW a cada 20 segundos
+            // Ping ao SW a cada 10 segundos (mais frequente)
             setInterval(() => {
                 if (swRegistration && swRegistration.active) {
                     const channel = new MessageChannel();
@@ -1823,14 +1834,24 @@
                         [channel.port2]
                     );
                 }
-            }, 20000);
+            }, 10000);
             
-            // Enviar lembretes a cada 30 segundos
+            // Enviar lembretes a cada 15 segundos (mais frequente)
             setInterval(() => {
                 sendRemindersToServiceWorker();
-            }, 30000);
+            }, 15000);
             
-            console.log('💚 Keep-Alive iniciado');
+            // Heartbeat visual no console para debug
+            setInterval(() => {
+                console.log('💓 Heartbeat do app:', new Date().toLocaleTimeString());
+            }, 60000); // A cada 1 minuto
+            
+            // Forçar verificação de lembretes mesmo no app
+            setInterval(() => {
+                checkReminders();
+            }, 30000); // A cada 30 segundos
+            
+            console.log('💚 Keep-Alive iniciado (intervalos reduzidos)');
         }
 
         // Registrar Background Sync para manter SW ativo
@@ -1925,9 +1946,11 @@
             startKeepAlive();
             registerBackgroundSync();
             
-            // Solicitar Wake Lock (opcional, mas ajuda muito)
-            // NOTA: Isso mantém a tela ligada. Comente a linha abaixo se não quiser isso.
-            // requestWakeLock();
+            // Solicitar Wake Lock (ATIVADO por padrão para confiabilidade)
+            // IMPORTANTE: Mantém a tela ligada e o app ativo em segundo plano
+            requestWakeLock();
+            
+            console.log('🔦 Wake Lock ativado automaticamente');
         };
     </script>
 </body>
